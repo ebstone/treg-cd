@@ -1,0 +1,8 @@
+variable,value,lower_bound,upper_bound,distribution,alpha_or_sd
+Remission,0.82,0.66,0.98,Uniform,
+Mild:Remission Ratio,0.89,0.8,0.98,Uniform,
+M-SR:Mild Ratio,0.89,0.8,0.98,Uniform,
+M-S:M-SR Ratio,0.87,0.79,0.96,Uniform,
+Surgery:M-SR Ratio,0.87,0.79,0.96,Uniform,
+psa_costs_ifx_dose,1068,854.4,1281.6,Gamma,108.9796
+psa_cost_treg_dose,19917,9958.5,29875.5,Gamma,5080.87

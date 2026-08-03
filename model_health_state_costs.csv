@@ -1,0 +1,25 @@
+therapy,health_state,cost_per_8wk_cycle_usd_2025,variable_name
+TREG,Mod/Sev,284,costs_treg_MS
+TREG,Mod/Sev Resp,217,costs_treg_MSR
+TREG,Mild,91,costs_treg_mild
+TREG,Remission,10,costs_treg_remission
+TREG,Surgery,34679,costs_treg_sur
+TREG,Death,0,costs_treg_death
+UST,Mod/Sev,282.86,costs_ust_MS
+UST,Mod/Sev Resp,14312,costs_ust_MSR
+UST,Mild,14148,costs_ust_mild
+UST,Remission,14039,costs_ust_remission
+UST,Surgery,35518,costs_ust_sur
+UST,Death,0,costs_ust_death
+IFX,Mod/Sev,1416.2007473924727,costs_ifx_MS
+IFX,Mod/Sev Resp,1536.2007473924727,costs_ifx_MSR
+IFX,Mild,1252.2007473924727,costs_ifx_mild
+IFX,Remission,1147.2007473924727,costs_ifx_remission
+IFX,Surgery,35518,costs_ifx_sur
+IFX,Death,0,costs_ifx_death
+CT,Mod/Sev,88,costs_ct_MS
+CT,Mod/Sev Resp,88,costs_ct_MSR
+CT,Mild,88,costs_ct_mild
+CT,Remission,88,costs_ct_remission
+CT,Surgery,35518,costs_ct_sur
+CT,Death,0,costs_ct_death

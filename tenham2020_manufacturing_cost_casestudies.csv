@@ -1,0 +1,9 @@
+case_study,facility,materials_eur,equipment_eur,personnel_eur,facility_cost_eur,total_per_batch_eur,fixed_per_batch_eur,variable_per_batch_eur,failure_rate,total_per_batch_adj_eur,fixed_per_batch_adj_eur,variable_per_batch_adj_eur,treatment_yield_per_batch,total_per_treatment_eur,fixed_per_treatment_eur,variable_per_treatment_eur,source
+1,A,15171,5862,9202,2801,33036,4206,28830,0.05,34688,4416,30272,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+2,A,12801,2506,4997,1632,21936,4206,17730,0.05,23033,4416,18617,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+3,A,11897,904,9747,6674,29221,4206,25016,0.05,30682,9858,26266,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+4,B,35096,2150,9384,4496,51126,9389,41738,0.05,53683,9858,43825,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+5,B,13916,4063,15296,13161,46437,18908,27529,0.05,48759,19854,28905,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+6,C,12542,7521,8147,4167,32376,5419,26957,0.05,33995,5690,28305,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+7,C,6287,1604,10754,4167,22812,5598,17214,0.05,23952,5877,18075,1,NA,NA,NA,"ten Ham et al. 2020, Cytotherapy"
+8,D,34695,12247,35723,99047,181713,81958,99756,0.05,190799,86055,104743,22,8673,3912,4761,"ten Ham et al. 2020, Cytotherapy"

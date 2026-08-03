@@ -1,0 +1,4 @@
+item,value_usd,variable_name,psa_variable_name,psa_base,psa_low,psa_high
+TREG dose cost,18908.735499999464,cost_treg_dose,psa_cost_treg_dose,19917,9958.5,29875.5
+TREG total annual doses,2,treg_total_doses,,,,
+IFX dose cost,1014.2007473924729,costs_ifx_dose,psa_costs_ifx_dose,1068,854.4,1281.6

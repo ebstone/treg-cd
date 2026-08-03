@@ -1,0 +1,3 @@
+parameter,value,variable_name
+Study population,1000,study_pop
+Discount rate (annual),0.03,discount

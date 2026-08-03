@@ -1,0 +1,13 @@
+category,item,value,unit,notes
+Sample Induction Calculation,HCPCS Code,J3358,,"Ustekinumab, IV inject, 1 mg"
+Sample Induction Calculation,HCPCS Code Dosage,1,MG,
+Sample Induction Calculation,Payment Limit,12.808,USD per mg,April 2025 ASP price
+Sample Induction Calculation,Patient weight (example),70,kg,requires 390 mg dose
+Sample Induction Calculation,Induction cost (390 mg x $12.808),4995.12,USD,
+Per Cycle Monitoring + Management Cost,Remission,13,USD,"Aliyev et al., Malone et al."
+Per Cycle Monitoring + Management Cost,Mild,119,USD,"Aliyev et al., Malone et al.; inflated to 2025 dollars"
+Per Cycle Monitoring + Management Cost,Moderate Severe Responder,283,USD,"Aliyev et al., Malone et al.; inflated to 2025 dollars"
+Per Cycle Monitoring + Management Cost,Moderate-Severe,283,USD,"Aliyev et al., Malone et al.; inflated to 2025 dollars"
+Discount,Annual Discount Rate,0.03,fraction,
+Discount,Cycle length,8,weeks,
+Discount,Cycles per year,6.15,cycles,

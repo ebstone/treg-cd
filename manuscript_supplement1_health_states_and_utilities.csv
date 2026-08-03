@@ -1,0 +1,8 @@
+health_state,cdai_range,utility_value,source
+Remission,CDAI < 150,0.82,"Aliyev et al., Buxton et al."
+Mild,150-220,0.73,"Aliyev et al., Buxton et al."
+Moderate Severe,220-600,,"Aliyev et al., Buxton et al."
+Mod/Sev,,0.57,"Aliyev et al., Buxton et al."
+Mod/Sev Resp,,0.65,"Aliyev et al., Buxton et al."
+Surgery,,0.57,"Aliyev et al., Buxton et al."
+Death,,0,"Aliyev et al., Buxton et al."

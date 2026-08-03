@@ -1,0 +1,4 @@
+intervention,total_qalys,total_costs_usd,icer_vs_ust,icer_vs_ifx,icer_vs_treg
+UST,3.90,118672,,Dominated,Dominated
+IFX,3.95,73124,Dominant,,Extendedly Dominated
+TREG,4.07,80855,Dominant,Extended Dominant,

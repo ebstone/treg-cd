@@ -1,0 +1,6 @@
+ratio_name,value,variable_name,psa_base,psa_low,psa_high
+Mild:Remission Ratio,0.8498852249508848,util_mild_remission,0.89,0.8,0.98
+M-SR:Mild Ratio,0.8096269972155788,util_modsev_mild,0.89,0.8,0.98
+M-S:M-SR Ratio,0.7920513266494404,util_modsev_resp,0.87,0.79,0.96
+Surgery:M-SR Ratio,0.8867030103255451,util_surgery_modsev,0.87,0.79,0.96
+Remission (base utility),0.9554396355934719,util_remission,0.82,0.66,0.98

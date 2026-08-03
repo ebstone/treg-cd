@@ -1,0 +1,7 @@
+health_state,utility_value,variable_name
+Mod/Sev,0.5207171001578433,util_modsev
+Mod/Sev Resp,0.6574284805008743,util_resp
+Mild,0.8120140296233492,util_mild
+Remission,0.9554396355934719,util_remission
+Surgery,0.5829438127338742,util_surgery
+Death,0,util_death

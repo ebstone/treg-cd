@@ -1,0 +1,60 @@
+description,parameter,base_case_value,distribution,alpha,beta,reference_source
+UST Induction Trial Endpoint Proportion,UST Week 6 Response Probability,0.56,Beta,116,93,12
+UST Induction Trial Endpoint Ratio,UST Week 6 Remitter:Responder Ratio,0.63,Uniform,0.50,0.76,12
+ADA Induction Trial Endpoint Proportion,ADA Week 4 Response Probability,0.5,Beta,38,38,21
+ADA Induction Trial Endpoint Ratio,ADA Week 4 Remitter:Responder Ratio,0.72,Uniform,0.58,0.86,21
+IFX Efficacy Ratio,IFX:ADA Efficacy Ratio,1.00,Uniform,0.8,1.2,"Assumed, 13"
+Induction Adjustment Ratio for Indirect Comparison,IFX Induction Remission Adjustment Ratio,1.016,Uniform,0.81,1.22,"12, 21"
+Induction Adjustment Ratio for Indirect Comparison,IFX Induction Responder Adjustment Ratio,0.56,Uniform,0.45,0.67,"12, 21"
+Induction Adjustment Ratio for Indirect Comparison,ADA Induction Remission Adjustment Ratio,1.016,Uniform,0.81,1.22,"12, 21"
+Induction Adjustment Ratio for Indirect Comparison,ADA Induction Responder Adjustment Ratio,0.56,Uniform,0.45,0.67,"12, 21"
+UST Maintenance Trial Endpoint Proportion,UST Week 44 Remission Probability in Patients in Remission at Baseline,0.67,Beta,52,26,12
+UST Maintenance Trial Endpoint Proportion,UST Week 44 Remission Probability in Patients Not in Remission at Baseline,0.32,Beta,16,34,12
+UST Maintenance Trial Endpoint Proportion,UST Week 44 Response Probability,0.59,Beta,76,52,12
+UST Maintenance Trial Endpoint Ratio,UST Week 44 Remitter:Responder Ratio,0.89,Uniform,0.81,0.98,12
+IFX Maintenance Trial Endpoint Proportion,IFX Week 52 Response Probability,0.39,Beta,44,69,23
+IFX Maintenance Trial Endpoint Ratio,IFX Week 52 Remitter:Responder Ratio,0.72,Uniform,0.58,0.87,23
+Maintenance Adjustment Ratio for Indirect Comparison,IFX Maintenance Remission to Remission Adjustment Ratio,0.73,Uniform,0.58,0.88,"12, 23"
+Maintenance Adjustment Ratio for Indirect Comparison,IFX Maintenance Mild to Remission Adjustment Ratio,3.43,Uniform,2.74,4.12,"12, 23"
+Maintenance Adjustment Ratio for Indirect Comparison,IFX Maintenance Responder Adjustment Ratio,0.81,Uniform,0.65,0.97,"12, 23"
+ADA Maintenance Trial Endpoint Proportion,ADA Week 52 Remission Probability in Patients in Remission at Week 22,0.81,Beta,56,16,22
+ADA Maintenance Trial Endpoint Proportion,ADA Week 52 Remission Probability in Patients Not in Remission at Week 22,0.06,Beta,6,94,22
+ADA Maintenance Trial Endpoint Proportion,ADA Week 52 Response Probability,0.41,Beta,71,101,22
+ADA Maintenance Trial Endpoint Ratio,ADA Week 52 Remitter:Responder Ratio,0.87,Uniform,0.79,0.96,22
+Maintenance Adjustment Ratio for Indirect Comparison,ADA Maintenance Remission to Remission Adjustment Ratio,0.73,Uniform,0.58,0.88,"12, 22"
+Maintenance Adjustment Ratio for Indirect Comparison,ADA Maintenance Mild to Remission Adjustment Ratio,3.43,Uniform,2.74,4.12,"12, 22"
+Maintenance Adjustment Ratio for Indirect Comparison,ADA Maintenance Responder Adjustment Ratio,0.94,Uniform,0.76,1.13,"12, 22"
+Placebo UST Maintenance Trial Endpoint Proportion,CT Week 44 Remission Probability in Patients in Remission at Baseline,0.46,Beta,36,43,12
+Placebo UST Maintenance Trial Endpoint Proportion,CT Week 44 Remission Probability in Patients Not in Remission at Baseline,0.21,Beta,11,41,12
+Placebo UST Maintenance Trial Endpoint Proportion,CT Week 44 Response Probability,0.44,Beta,58,73,12
+Placebo UST Maintenance Trial Endpoint Ratio,CT Week 44 Remitter:Responder Ratio,0.81,Uniform,0.65,0.97,12
+CT Transition Probability,CT 2-Week M-S to M-SR Probability,0.050,Uniform,0.04,0.06,Assumed
+CT Transition Probability,CT 2-Week M-S to Mild Probability,0.050,Uniform,0.04,0.06,Assumed
+Proportion for Calculating Transition Probabilities,Proportion of Responders that Transition to Mild,0.50,Uniform,0.4,0.6,Assumed
+Surgery Rate from Clinical Trial,Placebo Surgery Rate per 100 Responders per 54 weeks,126,Uniform,101,151,10
+Surgery Rate from Clinical Trial,IFX Surgery Rate per 100 Responders per 54 weeks,65,Uniform,52,78,10
+Out of Surgery Transition Probability,8-Week Surgery to M-S Probability,0.060,Uniform,0.048,0.072,"13, 14"
+Out of Surgery Transition Probability,8-Week Surgery to Mild/M-SR Probability,0.075,Uniform,0.06,0.09,"13, 14"
+Out of Surgery Transition Probability,8-Week Surgery to Surgery Probability,0.34,Uniform,0.27,0.40,"13, 14"
+Direct Cost,"Mild-Moderate CD-related PMPM Mean Pharmacy Cost, 2008 USD",111,Gamma,2644,0.042,32
+Direct Cost,"Moderate-Severe CD-related PMPM Mean Total Cost, 2008 USD",374,Gamma,2508,0.15,32
+Direct Cost,"Moderate-Severe CD-related PMPM Mean Pharmacy Cost, 2008 USD",123,Gamma,2093,0.059,32
+Direct Cost,"Mild-Moderate CD-related PMPM Mean Total Cost, 2008 USD",152,Gamma,1427,0.11,32
+Direct Cost,"Remission CD-related PMPM Mean Total Cost, 2008 USD",17,Gamma,181,0.094,32
+Direct Cost,"Severe-Fulminant CD-related PMPM Mean Total Cost, 2008 USD",1475,Gamma,34,43,32
+Direct Cost,"Difference in Annual OOP Costs: CD Patients and Non-CD Patients, 2010 USD",737,Gamma,1,737,33
+Time,Infusion Minutes of Treatment Time,150,Uniform,120,180,"Assumed, 31"
+Time,Monitoring/Management Minutes of Treatment Time,84,Gamma,3010,0.028,34
+Time,Surgery/Procedure Minutes of Treatment Time,210,Uniform,168,252,Assumed
+Time,Minutes of Travel Time (All Adults Seeking Care for Self or Others),37,Gamma,1316,0.028,34
+EQ-5D Utility,Remission,0.82,Uniform,0.66,0.98,"13, 15"
+EQ-5D Utility Ratio,Mild:Remission Ratio,0.89,Uniform,0.80,0.98,"13, 15"
+EQ-5D Utility Ratio,M-SR:Mild Ratio,0.89,Uniform,0.80,0.98,"13, 15, 35"
+EQ-5D Utility Ratio,M-S:M-SR Ratio,0.87,Uniform,0.79,0.96,"13, 15, 35"
+EQ-5D Utility Ratio,Surgery:M-SR Ratio,0.87,Uniform,0.79,0.96,"13, 15, 35"
+Direct Cost,"Drug Administration (Infusion), 2007 USD",239,,,,31
+Compensation,"Average Hourly Compensation, June 2017 USD",35,,,,27
+Direct Cost,FSS UST induction Unit Cost (130 mg vial),1512,,,,28
+Direct Cost,"FSS UST Maintenance Unit Cost (90 mg Syringe), September 2017 USD",9693,,,,28
+Direct Cost,"FSS IFX Unit Cost (100 mg Vial), September 2017 USD",656,,,,28
+Direct Cost,"FSS ADA Unit Cost (40 mg Syringe), September 2017 USD",1384,,,,28

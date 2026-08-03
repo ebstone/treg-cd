@@ -1,0 +1,10 @@
+scenario,treg_efficacy_advantage_vs_ust,intervention,nmb_usd,willingness_to_pay_usd
+Base,0.20,IFX,519526,150000
+Base,0.20,TREG,529388,150000
+Base,0.20,UST,466925,150000
+Alpha,0.10,IFX,519526.99,150000
+Alpha,0.10,TREG,516623.20,150000
+Alpha,0.10,UST,466925.62,150000
+Beta,0.30,IFX,519526.99,150000
+Beta,0.30,TREG,548120.71,150000
+Beta,0.30,UST,466925.62,150000

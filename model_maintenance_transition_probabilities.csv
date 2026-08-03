@@ -1,0 +1,180 @@
+therapy,scenario,from_state,to_state,probability_per_8wk_cycle,variable_name
+TREG,base,Mod/Sev,Mod/Sev,0.33680000000000004,p_treg_modsev_nonresp
+TREG,alpha,Mod/Sev,Mod/Sev,0.37890000000000007,p_treg_alpha_modsev_nonresp
+TREG,beta,Mod/Sev,Mod/Sev,0.2947,p_treg_beta_modsev_nonresp
+TREG,base,Mod/Sev,Mod/Sev Response,0.07079999999999997,p_treg_modsev_resp
+TREG,alpha,Mod/Sev,Mod/Sev Response,0.07964999999999997,p_treg_alpha_modsev_resp
+TREG,beta,Mod/Sev,Mod/Sev Response,0.06194999999999997,p_treg_beta_modsev_resp
+TREG,base,Mod/Sev,Mild,0.10688562691131495,p_treg_modsev_mild
+TREG,alpha,Mod/Sev,Mild,0.09769281345565746,p_treg_alpha_modsev_mild
+TREG,beta,Mod/Sev,Mild,0.11607844036697244,p_treg_beta_modsev_mild
+TREG,base,Mod/Sev,Remission,0.48551437308868506,p_treg_modsev_remission
+TREG,alpha,Mod/Sev,Remission,0.44375718654434254,p_treg_alpha_modsev_remission
+TREG,beta,Mod/Sev,Remission,0.5272715596330275,p_treg_beta_modsev_remission
+TREG,base,Mod/Sev,Surgery,0,p_treg_modsev_surgery
+TREG,alpha,Mod/Sev,Surgery,0,p_treg_alpha_modsev_surgery
+TREG,beta,Mod/Sev,Surgery,0,p_treg_beta_modsev_surgery
+TREG,base,Mod/Sev,Death,0,p_treg_modsev_death
+TREG,alpha,Mod/Sev,Death,0,p_treg_alpha_modsev_death
+TREG,beta,Mod/Sev,Death,0,p_treg_beta_modsev_death
+TREG,base,Mod/Sev Response,Mod/Sev,0.112940092,p_treg_resp_nonresp
+TREG,alpha,Mod/Sev Response,Mod/Sev,0.1275635648375807,p_treg_alpha_resp_nonresp
+TREG,beta,Mod/Sev Response,Mod/Sev,0.0984321640727384,p_treg_beta_resp_nonresp
+TREG,base,Mod/Sev Response,Mod/Sev Response,0.311776117,p_treg_resp_resp
+TREG,alpha,Mod/Sev Response,Mod/Sev Response,0.3521448612999336,p_treg_alpha_resp_resp
+TREG,beta,Mod/Sev Response,Mod/Sev Response,0.2717263413654234,p_treg_beta_resp_resp
+TREG,base,Mod/Sev Response,Mild,0.503831896,p_treg_resp_mild
+TREG,alpha,Mod/Sev Response,Mild,0.4485551473778602,p_treg_alpha_resp_mild
+TREG,beta,Mod/Sev Response,Mild,0.5586718832206162,p_treg_beta_resp_mild
+TREG,base,Mod/Sev Response,Remission,0.039663485,p_treg_resp_remission
+TREG,alpha,Mod/Sev Response,Remission,0.03982143029321302,p_treg_alpha_resp_remission
+TREG,beta,Mod/Sev Response,Remission,0.03950678694075895,p_treg_beta_resp_remission
+TREG,base,Mod/Sev Response,Surgery,0.031730788,p_treg_resp_surgery
+TREG,alpha,Mod/Sev Response,Surgery,0.03185714423457042,p_treg_alpha_resp_surgery
+TREG,beta,Mod/Sev Response,Surgery,0.031605429552607166,p_treg_beta_resp_surgery
+TREG,base,Mod/Sev Response,Death,6e-05,p_treg_resp_death
+TREG,alpha,Mod/Sev Response,Death,5.785195684244022e-05,p_treg_alpha_resp_death
+TREG,beta,Mod/Sev Response,Death,5.739484785582414e-05,p_treg_beta_resp_death
+TREG,base,Mild,Mod/Sev,0.12863567,p_treg_mild_nonresp
+TREG,alpha,Mild,Mod/Sev,0.14471512851190232,p_treg_alpha_mild_nonresp
+TREG,beta,Mild,Mod/Sev,0.11255621106481291,p_treg_beta_mild_nonresp
+TREG,base,Mild,Mod/Sev Response,0.335657412,p_treg_mild_resp
+TREG,alpha,Mild,Mod/Sev Response,0.3776145880605636,p_treg_alpha_mild_resp
+TREG,beta,Mild,Mod/Sev Response,0.2937002351582161,p_treg_beta_mild_resp
+TREG,base,Mild,Mild,0.527574066,p_treg_mild_mild
+TREG,alpha,Mild,Mild,0.4735729154474085,p_treg_alpha_mild_mild
+TREG,beta,Mild,Mild,0.5815752173187511,p_treg_beta_mild_mild
+TREG,base,Mild,Remission,0.008070968,p_treg_mild_remission
+TREG,alpha,Mild,Remission,0.004035484239047205,p_treg_alpha_mild_remission
+TREG,beta,Mild,Remission,0.012106452717141633,p_treg_beta_mild_remission
+TREG,base,Mild,Surgery,0,p_treg_mild_surgery
+TREG,alpha,Mild,Surgery,0,p_treg_alpha_mild_surgery
+TREG,beta,Mild,Surgery,0,p_treg_beta_mild_surgery
+TREG,base,Mild,Death,6e-05,p_treg_mild_death
+TREG,alpha,Mild,Death,6.188374107842733e-05,p_treg_alpha_mild_death
+TREG,beta,Mild,Death,6.188374107842733e-05,p_treg_beta_mild_death
+TREG,base,Remission,Mod/Sev,0,p_treg_remission_nonresp
+TREG,alpha,Remission,Mod/Sev,0,p_treg_alpha_remission_nonresp
+TREG,beta,Remission,Mod/Sev,0,p_treg_beta_remission_nonresp
+TREG,base,Remission,Mod/Sev Response,0,p_treg_remission_resp
+TREG,alpha,Remission,Mod/Sev Response,0,p_treg_alpha_remission_resp
+TREG,beta,Remission,Mod/Sev Response,0,p_treg_beta_remission_resp
+TREG,base,Remission,Mild,0.038,p_treg_remission_mild
+TREG,alpha,Remission,Mild,0.0661,p_treg_alpha_remission_mild
+TREG,beta,Remission,Mild,0.0266,p_treg_beta_remission_mild
+TREG,base,Remission,Remission,0.96194,p_treg_remission_remission
+TREG,alpha,Remission,Remission,0.9336,p_treg_alpha_remission_remission
+TREG,beta,Remission,Remission,0.97334,p_treg_beta_remission_remission
+TREG,base,Remission,Surgery,0,p_treg_remission_surgery
+TREG,alpha,Remission,Surgery,0,p_treg_alpha_remission_surgery
+TREG,beta,Remission,Surgery,0,p_treg_beta_remission_surgery
+TREG,base,Remission,Death,6e-05,p_treg_remission_death
+TREG,alpha,Remission,Death,6e-05,p_treg_alpha_remission_death
+TREG,beta,Remission,Death,6e-05,p_treg_beta_remission_death
+TREG,base,Surgery,Mod/Sev,0.042,p_treg_surgery_nonresp
+TREG,alpha,Surgery,Mod/Sev,0.03645,p_treg_alpha_surgery_nonresp
+TREG,beta,Surgery,Mod/Sev,0.02835,p_treg_beta_surgery_nonresp
+TREG,base,Surgery,Mod/Sev Response,0.0276,p_treg_surgery_resp
+TREG,alpha,Surgery,Mod/Sev Response,0.024030000000000003,p_treg_alpha_surgery_resp
+TREG,beta,Surgery,Mod/Sev Response,0.01869,p_treg_beta_surgery_resp
+TREG,base,Surgery,Mild,0.228,p_treg_surgery_mild
+TREG,alpha,Surgery,Mild,0.027820239954564816,p_treg_alpha_surgery_mild
+TREG,beta,Surgery,Mild,0.03006071986369445,p_treg_beta_surgery_mild
+TREG,base,Surgery,Remission,0,p_treg_surgery_remission
+TREG,alpha,Surgery,Remission,0.7060297600454352,p_treg_alpha_surgery_remission
+TREG,beta,Surgery,Remission,0.763029280136306,p_treg_beta_surgery_remission
+TREG,base,Surgery,Surgery,0.7023400000000001,p_treg_surgery_surgery
+TREG,alpha,Surgery,Surgery,0.20547,p_treg_alpha_surgery_surgery
+TREG,beta,Surgery,Surgery,0.15980999999999998,p_treg_beta_surgery_surgery
+TREG,base,Surgery,Death,6e-05,p_treg_surgery_death
+TREG,alpha,Surgery,Death,6e-05,p_treg_alpha_surgery_death
+TREG,beta,Surgery,Death,6e-05,p_treg_beta_surgery_death
+UST,base,Mod/Sev,Mod/Sev,0.791,p_ust_modsev_nonresp
+UST,base,Mod/Sev,Mod/Sev Response,0.0377,p_ust_modsev_resp
+UST,base,Mod/Sev,Mild,0.0377,p_ust_modsev_mild
+UST,base,Mod/Sev,Remission,0.133,p_ust_modsev_remission
+UST,base,Mod/Sev,Surgery,0,p_ust_modsev_surgery
+UST,base,Mod/Sev,Death,0,p_ust_modsev_death
+UST,base,Mod/Sev Response,Mod/Sev,0.14697729565809659,p_ust_resp_nonresp
+UST,base,Mod/Sev Response,Mod/Sev Response,0.4058031012812923,p_ust_resp_resp
+UST,base,Mod/Sev Response,Mild,0.4058031012812923,p_ust_resp_mild
+UST,base,Mod/Sev Response,Remission,0,p_ust_resp_remission
+UST,base,Mod/Sev Response,Surgery,0.041308579828535794,p_ust_resp_surgery
+UST,base,Mod/Sev Response,Death,0.00010792195078298432,p_ust_resp_death
+UST,base,Mild,Mod/Sev,0.15594666714911248,p_ust_mild_nonresp
+UST,base,Mild,Mod/Sev Response,0.4067752567144808,p_ust_mild_resp
+UST,base,Mild,Mild,0.4067752567144808,p_ust_mild_mild
+UST,base,Mild,Remission,0.030394638929720916,p_ust_mild_remission
+UST,base,Mild,Surgery,0,p_ust_mild_surgery
+UST,base,Mild,Death,0.00010818049220487763,p_ust_mild_death
+UST,base,Remission,Mod/Sev,0,p_ust_remission_nonresp
+UST,base,Remission,Mod/Sev Response,0,p_ust_remission_resp
+UST,base,Remission,Mild,0.06613586298832234,p_ust_remission_mild
+UST,base,Remission,Remission,0.9336400835339286,p_ust_remission_remission
+UST,base,Remission,Surgery,0,p_ust_remission_surgery
+UST,base,Remission,Death,0.00022405347774901796,p_ust_remission_death
+UST,base,Surgery,Mod/Sev,0.04053721745018844,p_ust_surgery_nonresp
+UST,base,Surgery,Mod/Sev Response,0.02670682630921707,p_ust_surgery_resp
+UST,base,Surgery,Mild,0.02670682630921707,p_ust_surgery_mild
+UST,base,Surgery,Remission,0.6775638261394136,p_ust_surgery_remission
+UST,base,Surgery,Surgery,0.2283226537286116,p_ust_surgery_surgery
+UST,base,Surgery,Death,0.0001626500633522675,p_ust_surgery_death
+IFX,base,Mod/Sev,Mod/Sev,0.756,p_ifx_modsev_nonresp
+IFX,base,Mod/Sev,Mod/Sev Response,0.0208,p_ifx_modsev_resp
+IFX,base,Mod/Sev,Mild,0.0208,p_ifx_modsev_mild
+IFX,base,Mod/Sev,Remission,0.203,p_ifx_modsev_remission
+IFX,base,Mod/Sev,Death,0,p_ifx_modsev_death
+IFX,base,Mod/Sev Response,Mod/Sev Non-Resp,0.07773190717177816,p_ifx_resp_nonresp
+IFX,base,Mod/Sev Response,Mod/Sev Response,0.4391237646297464,p_ifx_resp_resp
+IFX,base,Mod/Sev Response,Mild,0.4391237646297464,p_ifx_resp_mild
+IFX,base,Mod/Sev Response,Remission,0,p_ifx_resp_remission
+IFX,base,Mod/Sev Response,Surgery,0.043905856027270616,p_ifx_resp_surgery
+IFX,base,Mod/Sev Response,Death,0.00011470754145817002,p_ifx_resp_death
+IFX,base,Mild,Mod/Sev Non-Resp,0.09402009461255523,p_ifx_mild_nonresp
+IFX,base,Mild,Mod/Sev Response,0.43976227089428316,p_ifx_mild_resp
+IFX,base,Mild,Mild,0.43976227089428316,p_ifx_mild_mild
+IFX,base,Mild,Remission,0.026340489267349238,p_ifx_mild_remission
+IFX,base,Mild,Surgery,0,p_ifx_mild_surgery
+IFX,base,Mild,Death,0.00011487433152901123,p_ifx_mild_death
+IFX,base,Remission,Mod/Sev Non-Resp,0,p_ifx_remission_nonresp
+IFX,base,Remission,Mod/Sev Response,0,p_ifx_remission_resp
+IFX,base,Remission,Mild,0.03790142738924738,p_ifx_remission_mild
+IFX,base,Remission,Remission,0.9618677451251268,p_ifx_remission_remission
+IFX,base,Remission,Surgery,0,p_ifx_remission_surgery
+IFX,base,Remission,Death,0.00023082748562583413,p_ifx_remission_death
+IFX,base,Surgery,Mod/Sev Non-Resp,0.04053721745018844,p_ifx_surgery_nonresp
+IFX,base,Surgery,Mod/Sev Response,0.02670682630921707,p_ifx_surgery_resp
+IFX,base,Surgery,Mild,0.02670682630921707,p_ifx_surgery_mild
+IFX,base,Surgery,Remission,0.6775638261394136,p_ifx_surgery_remission
+IFX,base,Surgery,Surgery,0.2283226537286116,p_ifx_surgery_surgery
+IFX,base,Surgery,Death,0.0001626500633522675,p_ifx_surgery_death
+CT,base,Mod/Sev,Mod/Sev,0.6486041497448963,p_ct_modsev_nonresp
+CT,base,Mod/Sev,Mod/Sev Response,0.12036670724591438,p_ct_modsev_resp
+CT,base,Mod/Sev,Mild,0.12036670724591438,p_ct_modsev_mild
+CT,base,Mod/Sev,Remission,0,p_ct_modsev_remission
+CT,base,Mod/Sev,Surgery,0.11050671402104846,p_ct_modsev_surgery
+CT,base,Mod/Sev,Death,0.00015572174222641433,p_ct_modsev_death
+CT,base,Mod/Sev Response,Mod/Sev,0.10061889640047218,p_ct_resp_nonresp
+CT,base,Mod/Sev Response,Mod/Sev Response,0.4110267479400568,p_ct_resp_resp
+CT,base,Mod/Sev Response,Mild,0.4110267479400568,p_ct_resp_mild
+CT,base,Mod/Sev Response,Remission,0,p_ct_resp_remission
+CT,base,Mod/Sev Response,Surgery,0.07721879401299978,p_ct_resp_surgery
+CT,base,Mod/Sev Response,Death,0.00010881370641458559,p_ct_resp_death
+CT,base,Mild,Mod/Sev,0.15147434639659543,p_ct_mild_nonresp
+CT,base,Mild,Mod/Sev Response,0.414490171320862,p_ct_mild_resp
+CT,base,Mild,Mild,0.414490171320862,p_ct_mild_mild
+CT,base,Mild,Remission,0.01943558036132467,p_ct_mild_remission
+CT,base,Mild,Surgery,0,p_ct_mild_surgery
+CT,base,Mild,Death,0.00010973060035600694,p_ct_mild_death
+CT,base,Remission,Mod/Sev,0,p_ct_remission_nonresp
+CT,base,Remission,Mod/Sev Response,0,p_ct_remission_resp
+CT,base,Remission,Mild,0.1172225459262995,p_ct_remission_mild
+CT,base,Remission,Remission,0.8825656570608339,p_ct_remission_remission
+CT,base,Remission,Surgery,0,p_ct_remission_surgery
+CT,base,Remission,Death,0.00021179701286662555,p_ct_remission_death
+CT,base,Surgery,Mod/Sev,0.04053721745018844,p_ct_surgery_nonresp
+CT,base,Surgery,Mod/Sev Response,0.02670682630921707,p_ct_surgery_resp
+CT,base,Surgery,Mild,0.02670682630921707,p_ct_surgery_mild
+CT,base,Surgery,Remission,0.6775638261394136,p_ct_surgery_remission
+CT,base,Surgery,Surgery,0.2283226537286116,p_ct_surgery_surgery
+CT,base,Surgery,Death,0.0001626500633522675,p_ct_surgery_death

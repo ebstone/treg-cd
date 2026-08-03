@@ -1,0 +1,4 @@
+treatment,from_state,to_moderate_severe,to_moderate_severe_responder,to_mild,to_remission,source
+Ustekinumab,Moderate Severe,0.791,0.0377,0.0377,0.133,Aliyev Supplementary Table 3
+Infliximab,Moderate Severe,0.756,0.0208,0.0208,0.203,Aliyev Supplementary Table 3
+T-regulatory,Moderate Severe,0.3368,0.0708,0.10689,0.4855,Author-derived (20% adverse-transition reduction vs. UST; base case)

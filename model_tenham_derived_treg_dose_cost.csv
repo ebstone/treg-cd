@@ -1,0 +1,16 @@
+assumption,tenham2020_model8_value,treg_modeled_value,final_model_value
+Doses per patient,4,1,1
+Batches per year,6,24,24
+Doses per batch,88,44,22
+Conversion from COGS to retail price (margin),,,0.25
+Economies of scale factor applied to materials cost,1,0.5,0.5
+
+final_buildup_item,value_usd
+Case study selected,"Model 8, Facility D"
+"Fixed cost per year, adjusted",765509.8253400001
+Total cost per batch,109542.1238795
+Fixed cost per batch,31896.242722500003
+Variable cost per batch,77645.881157
+Doses per batch (final),22
+Total manufacturing (COGS) cost per treatment/dose,4979.187449068181
+Retail price per treatment/dose (used as cost_treg_dose base case),19916.749796272725

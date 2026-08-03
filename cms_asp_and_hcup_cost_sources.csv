@@ -1,0 +1,10 @@
+item,hcpcs_code,description,payment_limit_usd_per_unit,price_date,source,source_url
+UST induction,J3358,"Ustekinumab, IV inject, 1 mg",12.808,April 2025,CMS ASP NDC-HCPCS crosswalk,https://www.cms.gov/medicare/medicare-part-b-drug-average-sales-price
+UST maintenance,J3357,"Ustekinumab sub cu inj, 1 mg",155.883,2025,CMS ASP NDC-HCPCS crosswalk,https://www.cms.gov/medicare/medicare-part-b-drug-average-sales-price
+IV infusion administration,96365,Ther/proph/diag IV inf init,57.9,2025,CMS Physician Fee Schedule,https://www.cms.gov/medicare/physician-fee-schedule/search/overview
+Surgical cost (colectomy),,Cost of colectomy surgery,30389,2021,HCUPnet,https://datatools.ahrq.gov/hcupnet/
+FSS UST induction unit cost,,FSS UST induction unit cost (130 mg vial),1512,September 2017,Federal Supply Schedule (per Aliyev et al. 2019 Supplementary Table 2),
+FSS UST maintenance unit cost,,FSS UST maintenance unit cost (90 mg syringe),9693,September 2017,Federal Supply Schedule (per Aliyev et al. 2019 Supplementary Table 2),
+FSS IFX unit cost,,FSS IFX unit cost (100 mg vial),656,September 2017,Federal Supply Schedule (per Aliyev et al. 2019 Supplementary Table 2),
+FSS ADA unit cost,,FSS ADA unit cost (40 mg syringe),1384,September 2017,Federal Supply Schedule (per Aliyev et al. 2019 Supplementary Table 2),
+Monitoring/management cost source,,"Claims-based Markov model for Crohn's disease (cost basis for per-cycle monitoring/management)",,2010,Malone DC et al. Aliment Pharmacol Ther 2010;32:448-58,https://accpjournals-onlinelibrary-wiley-com.proxy1.library.jhu.edu/doi/full/10.1002/phar.2208
