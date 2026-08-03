@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "Placeholder citation metadata — update authors, version and DOI at each Zenodo release tag (docs/analysis_plan.md §12.3)."
+title: "Early Economic Evaluation of a Hypothetical Allogeneic T-Regulatory Cell Therapy for Moderate-to-Severe Crohn's Disease: Economically Justifiable Price and Value of Information"
+authors:
+  - family-names: Jadambaa
+    given-names: D.
+    affiliation: Johns Hopkins Bloomberg School of Public Health
+  - family-names: Stone
+    given-names: E.
+    affiliation: Johns Hopkins Bloomberg School of Public Health
+  - family-names: Abraham
+    given-names: B.
+    affiliation: Johns Hopkins Bloomberg School of Public Health
+repository-code: "https://github.com/ebstone/treg-cd"
+version: 0.1.0
+date-released: 2026-08-03
+license: "MIT (code); CC-BY-4.0 (data and documentation)"

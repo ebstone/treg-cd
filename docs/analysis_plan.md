@@ -444,45 +444,9 @@ Twelve structural scenarios is more than can be reported in 6,000 words. Recomme
 
 ## 11. CHEERS 2022 compliance plan
 
-The journal requires CHEERS 2022 for economic evaluations (Husereau et al., *PharmacoEconomics* 2022, doi:10.1007/s40273-021-01112-8). The completed checklist should be submitted as an Online Resource. Mapping of the 28 items to this design:
+The journal requires CHEERS 2022 for economic evaluations (Husereau et al., *PharmacoEconomics* 2022, doi:10.1007/s40273-021-01112-8). The completed checklist should be submitted as an Online Resource.
 
-| CHEERS 2022 item | Where addressed | Notes / new obligations created by this redesign |
-|---|---|---|
-| 1 Title | §1.1 | State that it is an economic evaluation and name the interventions |
-| 2 Abstract | §2 | Structured; may run to 450 words |
-| 3 Background and objectives | Manuscript intro; §3 | |
-| 4 Health economic analysis plan | **This document** | Cite it: state that an analysis plan was developed a priori and deposited in the repository. This is a genuine strength — most submissions cannot claim it |
-| 5 Study population | §5 | Must state both populations and which is base case |
-| 6 Setting and location | §4.1 | US |
-| 7 Comparators | §4.1, Decision 2 | Justify inclusion/exclusion of ADA explicitly |
-| 8 Perspective | §4.1 | Healthcare sector base case; societal scenario |
-| 9 Time horizon | §4.1 | Justify lifetime and report the 6.15-year comparability scenario |
-| 10 Discount rate | §4.1 | 3%, with scenarios |
-| 11 Selection of outcomes | §3 | QALYs; plus EJP/EVPI/EVPPI as decision outcomes |
-| 12 Measurement of outcomes | §7.1 | CDAI-defined states |
-| 13 Valuation of outcomes | §7.1 | Buxton 2007 mapping; note it is a mapping, not directly elicited utilities |
-| 14 Measurement/valuation of resources and costs | §7.1, §8 | |
-| 15 Currency, price date, conversion | §8 | **Currently non-compliant** — index unnamed, dollar years mixed |
-| 16 Rationale and description of model | §6 | Diagram required; the cure structure must be justified against precedent in oncology cell-therapy HTA |
-| 17 Analytics and assumptions | §6, §7 | Half-cycle correction; DEALE re-derivation; Dirichlet sampling |
-| 18 Characterising heterogeneity | §5 | Population scenarios serve this |
-| 19 Characterising distributional effects | — | **Gap.** Not addressed and probably out of scope; state so explicitly rather than omitting |
-| 20 Characterising uncertainty | §9, §10 | **New obligation:** report *structural* uncertainty around the cure assumption as a category distinct from parameter uncertainty. Standard PSA does not cover "is this a cure at all"; the null scenario (π = 0) is the honest structural bound and should be reported as such |
-| 21 Engagement with patients and others | §7.2 | If expert elicitation is run, describe the protocol here. If patients are not engaged, say so |
-| 22 Study parameters | §7.1 + ESM | Full parameter table with distributions and sources, as an Online Resource |
-| 23 Summary of main results | Results | Disaggregated costs and QALYs by arm |
-| 24 Effect of uncertainty | §9, §10 | CEACs, EVPI/EVPPI, EJP credible interval |
-| 25 Effect of engagement | §7.2 | How elicitation altered the analysis, if applicable |
-| 26 Findings, limitations, generalisability | §13 | |
-| 27 Source of funding | Declarations | |
-| 28 Conflicts of interest | Declarations | Declare any relationship with cell-therapy developers, including none |
-
-Verify item numbering and wording against the published checklist before submission; the mapping above is from the checklist's standard structure and should be confirmed line by line.
-
-**Two additional journal requirements worth flagging now:**
-
-- The journal requires that **use of a large language model be documented in the Methods section**. If this design document or any code is LLM-assisted, that disclosure obligation applies. LLMs cannot be listed as authors. Agree the wording early.
-- Declarations must appear as a **"Declarations" section before the reference list**, covering Funding, Competing interests, Ethics approval, Consent, Data and code availability, and Author contributions. Ethics: this is a modelling study using published aggregate data and requires no IRB review; state the exemption and its basis explicitly rather than omitting the heading.
+The full 28-item mapping, and the two additional journal requirements (LLM-use disclosure; the Declarations section), have been moved to **`docs/CHEERS_2022_checklist.md`** so it can be maintained as a fillable submission artifact independent of this plan. Update the "Manuscript location" column there as the manuscript is drafted.
 
 ---
 
@@ -548,6 +512,8 @@ treg-crohns-cea/
 ```
 
 **Two conventions worth enforcing from day one:** (i) `data/processed/` is generated, never edited — every number in it traces to a script and a file in `data/raw/`; (ii) `analysis/run_full_analysis.R` regenerates every figure and table in the manuscript from a clean checkout. If a number appears in the paper that cannot be produced by that script, it does not go in the paper. That rule is what prevents a recurrence of the disconnected EJP worksheet described in Appendix A.
+
+**Note on the tree above:** the `data/raw/` and `data/processed/` filenames shown are illustrative of the target naming scheme. The files actually populated in this repository during the initial data pull use the names and split documented in `data/data_dictionary.md`, which is authoritative — e.g. `aliyev2019_appendixS1_table1_assumptions.csv` and `aliyev2019_appendixS1_table2_parameters.csv` rather than the `tableS2`/`tableS3`/`tableS4` names shown here, and no `cure_fraction_elicitation.csv` yet, since the elicitation in Section 7.2 has not been run. `R/`, `analysis/`, `tests/testthat/` and `output/` contain scaffolding stubs only — no analysis code has been written yet (Gate 0/1 in Section 14 have not closed).
 
 ### 12.3 Archiving and the Data Availability Statement
 
@@ -638,66 +604,9 @@ Each requires an explicit yes/no or selection. Record the outcome, with date, in
 
 ## Appendix A. Audit of the IBD CEA v6 workbooks
 
-Findings from a direct read of `IBD_CEA_v6_PSA.xlsm` and `IBD_CEA_v6_Univariate_Sensitivity_Analysis.xlsm` (formulas and cached values). Cell references are given so each can be checked independently. Severity reflects likely effect on reported results. Direction of bias is stated where it can be determined.
+Findings from a direct read of `IBD_CEA_v6_PSA.xlsm` and `IBD_CEA_v6_Univariate_Sensitivity_Analysis.xlsm` (formulas and cached values), summarised in Section 0.2 above. Fourteen defects or undocumented choices were identified (A1–A14), several material and at least three biasing results in favour of Treg (A1, A3, A4), one against Treg (A2), and one favouring comparators (A8).
 
-### A.1 Errors
-
-**A1 — Costs are discounted against cumulative deaths, not elapsed time. [High severity]**
-In all three Markov sheets, the discounted-cost column uses `=AQn*(1/(1+discount)^Nn)`. Column N holds *cumulative conventional-therapy deaths*; elapsed time in years is column A (`=Bn*(8/52)`). The QALY column is correct (`=ADn*(1/(1+discount)^An)`). At cycle 7 the exponent applied to costs is 0.343 (deaths) instead of 1.077 (years); at the final cycle the implied discount factor is ≈0.899 rather than the correct ≈0.833.
-*Effect:* costs are systematically under-discounted in every arm. Because the comparators' costs are recurring and Treg's are front-loaded, this inflates comparator costs relative to Treg — **biases in favour of Treg**.
-
-**A2 — Base-case Treg "Surgery" transition row appears column-shifted. [High severity]**
-`Input Parameters` C34:C39 give Surgery → M-S 0.042, M-SR 0.0276, Mild 0.228, Remission 0, Surgery 0.7024. Ustekinumab's corresponding row is 0.0405 / 0.0267 / 0.0267 / 0.6776 / 0.2283, and the workbook's own Alpha (10%) and Beta (30%) Treg sheets give Remission 0.706 / 0.763 and Surgery-self 0.205 / 0.160. Under the documented 20% rule the base case should be approximately Remission 0.73, Surgery-self 0.18, Mild 0.03. The values for Mild, Remission and Surgery appear to have been misplaced.
-*Effect:* Treg patients entering the Surgery state largely remain there, accruing the surgery state cost ($34,679/cycle) and the lowest utility. **Biases against Treg.** Correcting it will improve Treg's reported cost-effectiveness; the magnitude must be quantified.
-
-**A3 — Second Treg dose is charged to the wrong cohort. [Moderate]**
-`TREG Markov` AJ10 = `SUM(AF10:AI10)+IF(treg_total_doses>1, H16*cost_treg_dose, 0)`. The cost is charged in row 10 (cycle 7, ≈1.08 years — correct timing) but multiplied by `H16`, the number alive in the Treg track at row 16 (cycle 13, ≈2 years). It should be `H10`.
-*Effect:* undercounts the patients receiving dose 2. **Biases in favour of Treg.** Moot if the single-dose base case is adopted.
-
-**A4 — Dollar years are mixed across arms. [Moderate]**
-Treg health-state costs are un-inflated 2017 values (`costs_treg_MSR` 217, `costs_treg_mild` 91, `costs_treg_remission` 10) while ustekinumab and infliximab use 2025 values ($282.86, $118.62, $13.04). See §8.
-*Effect:* Treg's non-drug maintenance costs understated by ≈23%. **Biases in favour of Treg** (small in absolute terms relative to drug costs).
-
-**A5 — Infliximab M-SR state cost appears to double-count administration. [Low–moderate]**
-`Input Parameters`: `costs_ifx_MS` = dose + 402, `costs_ifx_mild` = dose + 238, `costs_ifx_remission` = dose + 133 — each equal to the health-state cost plus one $119.36 administration fee. But `costs_ifx_MSR` = dose + 522 ≈ 402.22 + 119.36, i.e. the M-S figure *plus a second* administration fee.
-*Effect:* overstates infliximab costs in the M-SR state. Biases against infliximab.
-
-**A6 — Infliximab induction cost differs between the two workbooks. [High severity for the PSA]**
-Univariate workbook: `cost_inx_MS` = $3,563/patient (hardcoded; consistent with three induction infusions at weeks 0, 2 and 6). PSA workbook: `=IF(psa_switch=0,1068,psa_costs_ifx_dose)+…` = $1,372/patient — a single infusion.
-*Effect:* the PSA understates infliximab induction cost by ≈$2,191/patient. The probabilistic results are therefore **not** the stochastic counterpart of the deterministic results. Any PSA-based claim in the current manuscript is affected.
-
-**A7 — The Economically Justifiable Price worksheet is disconnected from the model. [High severity]**
-`Economically Justifiable Price` D9 = 26.48 (QALY Treg), D10 = 25.73 (QALY IFX), D15 = 73,125.2 (Costs IFX) — all hardcoded. The QALY values appear nowhere else in the workbook (the model's discounted per-patient QALYs are ≈4.07 and ≈3.95). The sheet returns EJP = $185,625, while the manuscript reports $95,382. The "graph" column additionally computes `(price − Costs_IFX)/ΔQALY`, treating the x-axis variable as *total cost*, not price.
-*Effect:* the reported EJP cannot be reproduced from the workbook. This number must be recomputed from scratch.
-
-**A8 — The conventional-therapy track omits health-state costs. [Moderate]**
-`costs_ct_MS` = `costs_ct_MSR` = `costs_ct_mild` = `costs_ct_remission` = 88, i.e. a flat per-cycle cost in every non-surgical state. In Aliyev, the CT cycle cost ($67, 2017 USD) is the CT *drug* cost, applied **in addition to** health-state costs.
-*Effect:* understates CT-track costs in all arms. Because the share of the cohort on the CT track differs sharply by arm (≈79% for UST, ≈76% for IFX, ≈34% for Treg at induction), the bias is not symmetric — it **favours the comparators**, partially offsetting A1 and A4.
-
-**A9 — Surgery is charged as a full episode cost in every cycle of occupancy. [Moderate]**
-`costs_*_sur` ≈ $35,518, an HCUP colectomy episode cost, is multiplied by the Surgery-state occupancy each cycle. With an 8-week probability of remaining in Surgery of 0.228 (and 0.702 in the Treg base case, see A2), a meaningful share of the cohort is charged a full surgical episode repeatedly. Aliyev used a per-cycle state cost derived from PMPM data ($884, 2017 USD).
-*Effect:* likely overstates surgical costs in all arms; interacts badly with A2. Needs an explicit decision: tunnel state with a one-time episode cost, or a per-cycle state cost.
-
-### A.2 Reproducibility and documentation gaps
-
-**A10 — Treg transition probabilities are hardcoded and the documented method does not reproduce them.**
-All Treg values in `Input Parameters` C10:C39 (and the Alpha/Beta blocks) are literal numbers, not formulas referencing ustekinumab. The **maintenance** rows are approximately consistent with the documented 20% rule. The **induction** row is not: base-case M-S → M-S is 0.3368 against ustekinumab's 0.791, a ≈57% relative reduction rather than 20%. The Alpha/Beta/base induction values are linear in the stated advantage parameter but imply a zero-advantage intercept of ≈0.421, not 0.791. Since the induction split determines what fraction of the cohort ever reaches the biologic track at all, this is the single most influential set of numbers in the model, and it is currently unreproducible from the manuscript's stated method.
-*Action:* re-derive in code, or document the actual derivation. Do not carry these values forward unexamined.
-
-**A11 — Cycle-length conversion cannot be verified.** All 8-week transition probabilities are hardcoded; the DEALE intermediate calculations are not in the file. See §7.3.
-
-**A12 — No half-cycle correction.** Cohort state occupancy is applied at cycle boundaries with no correction.
-
-**A13 — Cycle count and cycles-per-year are misstated in the manuscript.** The workbook runs 40 cycles (rows 4–43); the manuscript states 39. Forty 8-week cycles = 6.15 years, so the workbook is internally consistent and the manuscript text is wrong. Separately, Supplement 1 states "# cycles per year 6.15"; the correct figure, used by the workbook, is 6.5 (52/8). The 6.15 is the horizon in years, not a rate.
-
-**A14 — The PSA samples only seven parameters.** `PSA` rows 3–12: five utility parameters (Uniform over their CI bounds) and two drug unit costs (Gamma). No transition probability, no efficacy parameter, no health-state cost and no utility-for-Treg-specific-state is sampled. ICERs are computed per iteration (column R) rather than incremental net monetary benefit.
-*Effect:* the reported PSA characterises uncertainty in utilities and drug prices only. It cannot support EVPI or EVPPI, which are undefined over parameters held fixed. Rebuilding the PSA is a prerequisite for the primary endpoints of the redesign, not an optional improvement.
-
-### A.3 What the audit implies for the reported results
-
-The manuscript's base-case numbers (IFX $73,124 / 3.951 QALYs; Treg $80,855 / 4.068; UST $118,672 / 3.904; ICER $65,918; NMB $519,527 / $529,389 / $466,926 per 1,000 patients) are exactly reproducible from the univariate workbook's cached values, so the reported figures are internally faithful to that file. The issue is not arithmetic slippage between model and manuscript; it is that the file itself contains the defects above.
-
-Note also that the NMB column in `Results` carries both a live formula and a hardcoded "Static" column holding precisely the manuscript's reported values, while the live formula in the PSA workbook returns different numbers. Whatever the history, the practical consequence is that the manuscript's results are a frozen snapshot that the live workbook no longer reproduces. This, more than any individual defect, is the argument for rebuilding in scripted, version-controlled code.
+The full findings, with cell references and effect direction for each, have been moved to **`docs/model_audit_v6.md`** so they can be preserved as a standalone record of what changed and why, independent of this plan.
 
 ---
 
