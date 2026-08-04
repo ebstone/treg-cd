@@ -41,24 +41,44 @@ simulate_cohort <- function(m, initial_state, n_cycles) {
 
 # ---- Two-track maintenance arm (biologic + CT switch) -----------------------
 
+#' One cycle of the biologic/CT two-track mechanic: advance both tracks under their own
+#' matrices, switch whatever mass lands in Moderate-Severe under the biologic this cycle to the
+#' CT track's Moderate-Severe bucket ("switched to the CT track at the end of that cycle",
+#' §6.1 -- every cycle, cap or no cap), and, if `apply_cap_now`, move ALL remaining
+#' biologic-track mass to CT wholesale (the 2-year cap, §6.4 -- Decision 1).
+#'
+#' Extracted out of run_maintenance_arm() so R/03_cure_fraction_module.R's post-landmark phase
+#' can reuse the exact same switch/cap mechanic for Treg's non-cured track, rather than
+#' duplicating it -- a second, drifted copy of this logic would be exactly the kind of bug that's
+#' easy to introduce and hard to notice.
+step_maintenance_cycle <- function(on_biologic_prev, on_ct_prev, biologic_matrix, ct_matrix,
+                                    ms_idx, apply_cap_now) {
+  bio_next <- as.numeric(on_biologic_prev %*% biologic_matrix)
+  ct_next <- as.numeric(on_ct_prev %*% ct_matrix)
+
+  ct_next[ms_idx] <- ct_next[ms_idx] + bio_next[ms_idx]
+  bio_next[ms_idx] <- 0
+
+  if (apply_cap_now) {
+    ct_next <- ct_next + bio_next
+    bio_next[] <- 0
+  }
+
+  list(on_biologic = bio_next, on_ct = ct_next)
+}
+
 #' Simulate a biologic maintenance arm (UST/IFX/ADA) alongside the CT track its non-responders
 #' and, at the 2-year cap, its long-term survivors switch onto (analysis_plan.md §6.1, §6.4 --
 #' Decision 1, recorded 2026-08-04: reinstate the cap for UST/IFX/ADA and non-cured Treg
 #' responders; never for cured/SDR Treg).
 #'
-#' Tracks two parallel occupancy vectors per cycle rather than one compound (arm x state) block
-#' matrix, because the Moderate-Severe switch is a *state-conditional* reassignment applied
-#' after each matrix multiply, not a fixed transition probability a block matrix could encode
-#' directly -- this gives the switching rule as one auditable line rather than an implicit
-#' consequence of matrix structure.
+#' Tracks two parallel occupancy vectors per cycle (via step_maintenance_cycle(), above) rather
+#' than one compound (arm x state) block matrix, because the Moderate-Severe switch is a
+#' *state-conditional* reassignment applied after each matrix multiply, not a fixed transition
+#' probability a block matrix could encode directly -- this gives the switching rule as one
+#' auditable function rather than an implicit consequence of matrix structure.
 #'
-#' Every cycle: 1) each track advances under its own matrix; 2) whatever mass lands in
-#' Moderate-Severe under the biologic this cycle exits to the CT track's Moderate-Severe bucket
-#' ("switched to the CT track at the end of that cycle", §6.1) -- this happens every cycle,
-#' cap or no cap; 3) if `apply_cap` and this is `cap_cycle`, ALL remaining biologic-track mass
-#' (not just Moderate-Severe) switches to CT wholesale, one time, and the biologic track is zero
-#' for the rest of the horizon. `apply_cap = FALSE` gives the no-cap structural scenario
-#' (§6.4) for free.
+#' `apply_cap = FALSE` gives the no-cap structural scenario (§6.4) for free.
 #'
 #' `initial_on_ct` seeds `on_ct`'s cycle-0 row (defaults to zero: "everyone starts on the
 #' biologic"). The default is only correct on its own for a placeholder/synthetic initial
@@ -83,19 +103,12 @@ run_maintenance_arm <- function(biologic_matrix, ct_matrix, initial_state, n_cyc
   on_ct[1, ] <- initial_on_ct
 
   for (t in seq_len(n_cycles)) {
-    bio_next <- as.numeric(on_biologic[t, ] %*% biologic_matrix)
-    ct_next <- as.numeric(on_ct[t, ] %*% ct_matrix)
-
-    ct_next[ms_idx] <- ct_next[ms_idx] + bio_next[ms_idx]
-    bio_next[ms_idx] <- 0
-
-    if (apply_cap && t == cap_cycle) {
-      ct_next <- ct_next + bio_next
-      bio_next[] <- 0
-    }
-
-    on_biologic[t + 1, ] <- bio_next
-    on_ct[t + 1, ] <- ct_next
+    step <- step_maintenance_cycle(
+      on_biologic[t, ], on_ct[t, ], biologic_matrix, ct_matrix, ms_idx,
+      apply_cap_now = apply_cap && t == cap_cycle
+    )
+    on_biologic[t + 1, ] <- step$on_biologic
+    on_ct[t + 1, ] <- step$on_ct
   }
 
   list(on_biologic = on_biologic, on_ct = on_ct, total = on_biologic + on_ct)
