@@ -319,18 +319,20 @@ Aliyev's Appendix S2 documents the DEALE conversion (constant hazard, exponentia
 
 ## 8. Cost reconciliation — resolved
 
-The discrepancy flagged in the project brief is now traceable. Aliyev's Appendix S2 reports per-cycle health-state costs in **2017 USD**; the current workbook and Supplement 1 report figures that are those same values inflated by a factor of approximately **1.3035** to 2025 USD.
+**2026-08-04 revision.** The cost-*cycle-length* question this section originally left open (were Aliyev's per-cycle costs meant for an 8-week cycle or something else?) is dissolved by the same decision that resolved it for transition probabilities: this project now runs Aliyev's native 2-week cycle throughout (`R/00_derive_transition_probs.R`'s third-revision header comment), and Appendix S2 states these are "costs per cycle" in the same document whose transition-probability section runs on that same 2-week cycle. There is no separate cost-cycle convention to reconcile — Aliyev's $217/$91/$10/$67/$884 apply directly, per 2-week cycle, no conversion needed. What remains is dollar-year inflation only (2017 → 2025 USD), addressed below.
 
-| Health state | Aliyev S2 (2017 USD) | Derivation in Aliyev | Workbook / Supplement 1 (2025 USD) | Implied factor |
+Separately, re-verifying the *arithmetic* this section previously presented turned up an error, corrected here: the "Derivation in Aliyev" column below does **not** actually reproduce Aliyev's reported 2017 USD figures when computed — e.g. the stated M-S formula ($374 − $123 + $111) equals $362, not $217. This isn't a one-off transcription slip: every cost line shows the same ~0.6× gap between the raw PMPM-derived value and Aliyev's reported per-cycle figure, including Mild and Remission, which the appendix describes as a *direct* copy of the PMPM total with no subtraction formula at all ($152 reported as $91; $17 reported as $10). That's a systematic step in Aliyev's own derivation (possibly a Malone et al. PMPM-to-episode convention this project doesn't have access to) that Appendix S2 doesn't document and that **isn't independently reproducible from the materials in this repository** — the same situation as the IFX induction gap noted in Gate 1's `DERIVATION_NOTES.md`. This doesn't block using the figures: exactly as for the transition probabilities, this project takes Aliyev's *published* per-cycle costs as the primary source rather than re-deriving them, and the currency-year inflation step below checks out correctly against those published figures regardless of how he arrived at them.
+
+| Health state | Aliyev S2 (2017 USD, per 2-week cycle) | PMPM-formula result (does not reproduce Aliyev's figure — see above) | Workbook / Supplement 1 (2025 USD) | Inflation factor (2017→2025) |
 |---|---|---|---|---|
-| Moderate-Severe | $217 | M-S PMPM total ($374) − M-S PMPM pharmacy ($123) + Mild-moderate PMPM pharmacy ($111) | $282.86 (Supplement 1 rounds to $283) | 1.3035 |
+| Moderate-Severe | $217 | $374 − $123 + $111 = $362 | $282.86 (Supplement 1 rounds to $283) | 1.3035 |
 | M-SR | $217 | assumed equal to M-S | $282.86 | 1.3035 |
-| Mild | $91 | Mild-moderate PMPM total ($152), less pharmacy adjustment | $118.62 (Supplement 1: $119) | 1.3035 |
-| Remission | $10 | Remission PMPM total ($17), adjusted | $13.04 (Supplement 1: $13) | 1.3035 |
-| Conventional therapy | $67 | = Mild-moderate CD-related pharmacy cost | $87.53 | ~1.306 |
-| Surgery | $884 | Severe-fulminant PMPM total ($1,475) | **$35,518 — replaced, not inflated**, with an HCUP colectomy episode cost | n/a |
+| Mild | $91 | $152 (direct PMPM total, no formula) | $118.62 (Supplement 1: $119) | 1.3035 |
+| Remission | $10 | $17 (direct PMPM total) | $13.04 (Supplement 1: $13) | 1.3035 |
+| Conventional therapy | $67 | $111 (direct PMPM pharmacy) | $87.53 | ~1.306 |
+| Surgery | $884 | $1,475 (direct PMPM total) | **$35,518 — replaced, not inflated**, with an HCUP colectomy episode cost | n/a |
 
-**So the two documents do reconcile**, and the earlier inability to match them arose from three things: the PMPM-to-per-cycle derivation is netted (total minus pharmacy plus substituted pharmacy), not a direct read of Supplementary Table 2; the surgery cost was replaced with an HCUP episode cost rather than inflated; and the workbook mixes dollar years.
+**The currency-year reconciliation holds**: the workbook/Supplement 1's 2025 USD figures are Aliyev's own 2017 USD figures (left column) inflated by ≈1.3035, consistently across every line — that part of the original reconciliation was correct and still stands.
 
 **Three actions required:**
 
