@@ -60,9 +60,13 @@ simulate_cohort <- function(m, initial_state, n_cycles) {
 #' for the rest of the horizon. `apply_cap = FALSE` gives the no-cap structural scenario
 #' (§6.4) for free.
 #'
-#' Everyone starts on the biologic: `on_ct`'s cycle-0 row is zero regardless of `initial_state`.
+#' `initial_on_ct` seeds `on_ct`'s cycle-0 row (defaults to zero: "everyone starts on the
+#' biologic"). The default is only correct on its own for a placeholder/synthetic initial
+#' state; a real induction split (R/01_decision_tree.R) has non-responders entering directly on
+#' CT at cycle 0, not accumulating there only through the cycle-by-cycle Moderate-Severe switch
+#' -- pass that split's `initial_on_ct` here to represent that correctly.
 run_maintenance_arm <- function(biologic_matrix, ct_matrix, initial_state, n_cycles,
-                                 cap_cycle = 52, apply_cap = TRUE) {
+                                 cap_cycle = 52, apply_cap = TRUE, initial_on_ct = NULL) {
   states <- rownames(biologic_matrix)
   stopifnot(
     !is.null(states), identical(states, rownames(ct_matrix)),
@@ -70,10 +74,13 @@ run_maintenance_arm <- function(biologic_matrix, ct_matrix, initial_state, n_cyc
   )
   ms_idx <- match("Moderate-Severe", states)
   stopifnot(!is.na(ms_idx))
+  if (is.null(initial_on_ct)) initial_on_ct <- rep(0, length(states))
+  stopifnot(length(initial_on_ct) == length(states))
 
   on_biologic <- matrix(0, nrow = n_cycles + 1, ncol = length(states), dimnames = list(NULL, states))
   on_ct <- matrix(0, nrow = n_cycles + 1, ncol = length(states), dimnames = list(NULL, states))
   on_biologic[1, ] <- initial_state
+  on_ct[1, ] <- initial_on_ct
 
   for (t in seq_len(n_cycles)) {
     bio_next <- as.numeric(on_biologic[t, ] %*% biologic_matrix)

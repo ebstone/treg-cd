@@ -18,9 +18,11 @@ Gate 0 closed 2026-08-04 (`docs/analysis_plan.md` §15 — Decisions 1, 4, 5 fin
 2026-08-04 — induction and maintenance transition probabilities for all four therapies
 (UST/IFX/ADA/CT) are sourced directly from Aliyev et al. 2019 Appendix S2, used at Aliyev's
 native 2-week cycle (`R/00_derive_transition_probs.R`, `data/processed/DERIVATION_NOTES.md`).
-Gate 2 engine in progress: `R/02_markov_engine.R` (cohort Markov core, with the M-S-to-CT switch
-and 2-year cap from analysis_plan.md §6.1/§6.4) is built and tested. The induction decision tree
-(`R/01`), mixture-cure module (`R/03`), and cost/utility attachment (`R/04`) are not yet written.
+Gate 2 engine in progress: `R/01_decision_tree.R` (induction split into the biologic/CT initial
+occupancy vectors) and `R/02_markov_engine.R` (cohort Markov core, with the M-S-to-CT switch and
+2-year cap from analysis_plan.md §6.1/§6.4) are built, wired together, and tested end to end
+(induction -> maintenance, cohort-conserving over a full lifetime horizon for UST/IFX/ADA). The
+mixture-cure module (`R/03`) and cost/utility attachment (`R/04`) are not yet written.
 
 ## Repository structure
 
