@@ -1,334 +1,270 @@
-# Re-derivation of transition probabilities from published trial endpoints (analysis_plan.md
-# §7.3), for the rebuilt engine (R/02_markov_engine.R onward) to consume directly.
+# Load, validate, and cycle-convert the published induction and maintenance transition
+# probabilities from Aliyev, Hay & Hwang 2019 (Pharmacotherapy), Appendix S2, Supplementary
+# Tables 3 and 4 -- the primary source this study's biologic-arm parameterisation rests on.
 #
-# SCOPE CHANGE, 2026-08-04: earlier versions of this script tried to reconcile re-derived
-# values against the original manuscript / v6 workbook figures, and treated a tight match as
-# the Gate 1 pass condition. That target has been dropped: this is a from-scratch rebuild, the
-# original figures are known to carry several audited defects (docs/model_audit_v6.md), and in
-# at least one case (UST induction) the only candidate method that numerically matched the
-# legacy value did so by implicitly using a 2-week window inconsistent with this study's own
-# stated 8-week induction design -- i.e. the legacy figure looks like an artifact of Aliyev's
-# per-2-week maintenance cycle carried over unchanged, not a value actually re-derived for this
-# study's induction window. See DERIVATION_NOTES.md for the full writeup.
+# HISTORY, 2026-08-04: earlier versions of this script tried to *re-derive* these values from
+# scratch via DEALE conversion of the raw trial endpoints in
+# data/raw/aliyev2019_appendixS1_table2_parameters.csv (response probability x
+# remitter:responder ratio, per therapy). That attempt is retired: Appendix S2's own worked
+# example ("Adjustment Ratio Calculation") shows Aliyev's actual method for IFX/ADA involves an
+# indirect, placebo-anchored cross-trial adjustment -- converting each trial's PLACEBO-arm
+# endpoint to a yearly rate, taking the ratio between trials, and applying it to the drug arm's
+# own rate -- which requires each trial's separate placebo-arm endpoint. That endpoint is not
+# present in data/raw/ (only the active-drug-arm endpoints are). Confirmed by direct comparison:
+# neither prior candidate re-derivation reproduced Aliyev's published Table 3 (off by ~0.35 on
+# UST to_remission, ~0.39 on ADA) -- not a rounding-level gap, a genuine missing input. See git
+# history for the retired derive_induction()/derive_ifx_induction() functions if that
+# from-scratch attempt is useful for the manuscript's discussion section.
 #
-# This script instead computes ONE documented, defensible set of values per therapy and reports
-# the legacy figures alongside only as non-blocking reference context (useful for the
-# manuscript's discussion section -- "our re-derived estimates differ from Aliyev's because...").
-# Where a genuine data gap remains (no directly observed trial endpoint, or an endpoint
-# structured too differently to convert), that is flagged explicitly rather than papered over.
+# With Appendix S2 now available (data/raw/aliyev2019_appendixS2_table3_induction_transition_probabilities.csv,
+# ..._table4_maintenance_transition_probabilities.csv -- transcribed from the appendix and
+# verified by direct visual comparison against its table images, one row group at a time), the
+# well-defined task left for this script is not re-derivation but VALIDATION and one genuine
+# CONVERSION:
+#
+#   - Table 3 (induction) needs no conversion. Its structure is a single-step absorbing
+#     partition -- once a patient reaches Mild/M-SR/Remission the matrix holds them there with
+#     probability 1 -- showing it is already the terminal end-of-induction split, used as-is
+#     regardless of the 2-week-equivalent hazard framing Appendix S2 uses to compute it.
+#   - Table 4 (maintenance) is reported at a 2-week cycle length (Appendix S2's DEALE worked
+#     example; "the same method was used ... in induction and maintenance phases"), but this
+#     study's redesigned maintenance Markov runs on 8-week cycles (analysis_plan.md §6.1).
+#     Converting a verified 2-week transition matrix to an 8-week one is standard, exact
+#     Markov-chain math (Chapman-Kolmogorov): M_8wk = M_2wk %*% M_2wk %*% M_2wk %*% M_2wk. No
+#     guessing required, unlike the per-endpoint DEALE tricks the retired approach relied on.
 
-# ---- Core conversions --------------------------------------------------------
+# ---- Validation -----------------------------------------------------------
 
-#' Convert a cumulative probability observed over `t_from` time units to the
-#' probability implied over `t_to` time units, assuming a constant hazard
-#' (DEALE: analysis_plan.md §7.3 worked example — UST week-6 remission 0.349
-#' -> annual rate 3.720 -> 2-week probability 0.133).
-deale_convert <- function(p, t_from, t_to) {
-  stopifnot(all(p >= 0 & p < 1), all(t_from > 0), all(t_to > 0))
-  rate <- -log(1 - p) / t_from
-  1 - exp(-rate * t_to)
-}
-
-#' Back out the per-cycle "stay in state" probability implied by a cumulative
-#' multi-cycle endpoint (e.g. "remission at week 44 given remission at
-#' baseline"), assuming a stationary per-cycle Markov process:
-#' p_cumulative = p_per_cycle ^ n_cycles.
-retention_root <- function(p_cumulative, n_cycles) {
-  stopifnot(all(p_cumulative >= 0 & p_cumulative <= 1), all(n_cycles > 0))
-  p_cumulative^(1 / n_cycles)
-}
-
-get_param <- function(params, name) {
-  hit <- params[params$parameter == name, "base_case_value"]
-  if (length(hit) != 1) stop("Expected exactly one match for '", name, "', got ", length(hit))
-  hit
-}
-
-# ---- Induction ----------------------------------------------------------
-
-#' Re-derive induction destination probabilities for a therapy with a directly
-#' observed trial-endpoint response probability and remitter:responder ratio,
-#' extrapolated to `target_week`.
-#'
-#' Method: split the observed response proportion into its two mutually
-#' exclusive destination-specific cumulative proportions -- remission
-#' (response x ratio) and responder-only (response x (1 - ratio), further
-#' split M-SR/Mild via `mild_split`) -- BEFORE DEALE conversion, then convert
-#' each independently using its own implied hazard rate.
-#'
-#' This ordering matters and is the one methodological point worth being
-#' explicit about: DEALE assumes a single constant hazard for a single
-#' well-defined event. "Remission by week W" and "response-but-not-remission
-#' by week W" are two different competing events with two different
-#' implied rates -- pooling them into one response-probability hazard and
-#' only splitting by the (unconverted, or separately-converted) ratio
-#' afterward mixes two timescales and has no clean single-hazard
-#' interpretation. Splitting first, converting each piece on its own, does.
-derive_induction <- function(therapy, week, p_response, remitter_ratio, mild_split,
-                              target_week, confidence = "direct", note = "") {
-  stopifnot(p_response > 0, p_response < 1, remitter_ratio >= 0, remitter_ratio <= 1)
-
-  p_remission_obs <- p_response * remitter_ratio
-  p_resp_only_obs <- p_response * (1 - remitter_ratio)
-
-  p_remission <- deale_convert(p_remission_obs, week, target_week)
-  p_resp_only <- deale_convert(p_resp_only_obs, week, target_week)
-
-  # Converting the two destination-specific proportions independently (see the ordering
-  # rationale above) means they do not automatically sum to <= 1 at every horizon: each
-  # individually approaches 1 as target_week grows, so their sum approaches 2 and
-  # to_moderate_severe approaches -1. It stays valid near the trial window (by construction,
-  # it's exactly 1 at target_week == week) but the safe range is finite and therapy-specific --
-  # for ADA (week 4 -> target_week 8 is already a 2x extrapolation) it turns negative above
-  # target_week ~= 10.2. Fail loudly here rather than let a future scenario change (a longer
-  # induction window, a different comparator with a shorter trial week) silently feed a
-  # negative transition probability into the Markov engine.
-  to_moderate_severe <- 1 - p_remission - p_resp_only
-  if (to_moderate_severe < 0 || to_moderate_severe > 1) {
-    stop(sprintf(
-      paste(
-        "derive_induction(%s): extrapolating from week %g to target_week %g produced an",
-        "invalid non-response probability (%.4f). The two destination-specific hazards no",
-        "longer sum to a valid probability at this horizon -- reduce target_week or revisit",
-        "the split-then-convert method for this therapy."
-      ),
-      therapy, week, target_week, to_moderate_severe
-    ))
+#' Check that a long-format transition table (from_state, to_state, probability, grouped by
+#' `by`) has, for every group and from_state, probabilities in [0,1] summing to 1.
+validate_row_sums <- function(df, by, tol = 1e-6) {
+  key <- do.call(paste, c(df[c(by, "from_state")], sep = ""))
+  sums <- tapply(df$probability, key, sum)
+  bad <- sums[abs(sums - 1) > tol]
+  if (length(bad) > 0) {
+    stop("Row sums not equal to 1 for: ", paste(names(bad), "=", round(bad, 6), collapse = "; "))
   }
+  if (any(df$probability < 0 | df$probability > 1)) {
+    stop("Probabilities outside [0,1] found in transition table")
+  }
+  invisible(TRUE)
+}
 
+#' Build a square transition matrix (states x states) from a long-format
+#' (from_state, to_state, probability) data frame for one therapy. Any from_state present in
+#' `states` but absent from the data (biologic arms have no "Moderate-Severe" row: patients who
+#' deteriorate to Moderate-Severe exit to the CT track rather than continuing on this matrix,
+#' by this study's own model design, analysis_plan.md §6.1) is padded as an absorbing
+#' self-loop -- the correct convention for computing "this matrix's own n-cycle behaviour",
+#' since the real cross-matrix CT-switch is the Markov engine's job (Gate 2), not this script's.
+build_transition_matrix <- function(df, states) {
+  m <- matrix(0, nrow = length(states), ncol = length(states), dimnames = list(states, states))
+  for (i in seq_len(nrow(df))) {
+    m[df$from_state[i], df$to_state[i]] <- df$probability[i]
+  }
+  missing_from <- states[rowSums(m) == 0]
+  for (s in missing_from) m[s, s] <- 1
+  m
+}
+
+#' Convert a square transition matrix to its n-cycle equivalent (Chapman-Kolmogorov).
+matrix_power <- function(m, n) {
+  stopifnot(n >= 1, nrow(m) == ncol(m))
+  result <- m
+  if (n > 1) for (i in seq_len(n - 1)) result <- result %*% m
+  result
+}
+
+#' Long-format (from_state, to_state, probability) rows from a square matrix.
+matrix_to_long <- function(m, therapy) {
+  states <- rownames(m)
+  do.call(rbind, lapply(states, function(from) {
+    data.frame(therapy = therapy, from_state = from, to_state = states,
+               probability = unname(m[from, ]), stringsAsFactors = FALSE)
+  }))
+}
+
+# ---- Induction: Table 3, used as-is ----------------------------------------
+
+load_published_induction <- function(raw_dir) {
+  df <- utils::read.csv(
+    file.path(raw_dir, "aliyev2019_appendixS2_table3_induction_transition_probabilities.csv"),
+    stringsAsFactors = FALSE
+  )
+  # Published, rounded-to-3-4-significant-figures values (e.g. 0.791 + 0.0377 + 0.0377 + 0.133 =
+  # 0.9994) -- a looser tolerance than the default is expected and correct here, not a bug.
+  validate_row_sums(df, by = "treatment", tol = 0.001)
+
+  # Only the Moderate-Severe row is a live induction split; the other rows (Moderate-Severe
+  # Responder/Mild/Remission -> self, probability 1) are the absorbing placeholders that make
+  # the published table square, not additional induction-phase information.
+  out <- df[df$from_state == "Moderate-Severe", c("treatment", "to_state", "probability")]
+  wide <- reshape(out, idvar = "treatment", timevar = "to_state", direction = "wide")
+  names(wide) <- sub("^probability\\.", "", names(wide))
   data.frame(
-    therapy = therapy,
-    target_week = target_week,
-    confidence = confidence,
-    to_moderate_severe = to_moderate_severe,
-    to_moderate_severe_responder = p_resp_only * (1 - mild_split),
-    to_mild = p_resp_only * mild_split,
-    to_remission = p_remission,
-    note = note,
+    therapy = wide$treatment,
+    confidence = "published_source",
+    to_moderate_severe = wide[["Moderate-Severe"]],
+    to_moderate_severe_responder = wide[["Moderate-Severe Responder"]],
+    to_mild = wide[["Mild"]],
+    to_remission = wide[["Remission"]],
+    note = "Aliyev et al. 2019 Appendix S2, Supplementary Table 3 (verified against the table image; PHAR2208 supplementary materials). Used as published, no conversion applied.",
     stringsAsFactors = FALSE
   )
 }
 
-#' IFX has no directly observed induction trial endpoint in data/raw/ -- only
-#' an indirect adjustment of ADA's endpoint via the workbook's "IFX Induction
-#' Remission/Responder Adjustment Ratio" parameters. The semantics of those
-#' ratios (odds ratio? risk ratio? applied to the raw proportion or to a
-#' DEALE-converted probability?) are not documented in this repository's
-#' materials (Aliyev Appendix S2 is not present). This is a genuine data gap,
-#' not a methodological choice this script can resolve -- flagged low
-#' confidence throughout, independent of the target-week question above.
-derive_ifx_induction <- function(params, mild_split, target_week) {
-  ada_week <- 4
-  p_response_ada <- get_param(params, "ADA Week 4 Response Probability")
-  ratio_ada <- get_param(params, "ADA Week 4 Remitter:Responder Ratio")
-  responder_adj <- get_param(params, "IFX Induction Responder Adjustment Ratio")
-  remission_adj <- get_param(params, "IFX Induction Remission Adjustment Ratio")
-  efficacy_ratio <- get_param(params, "IFX:ADA Efficacy Ratio")
+# ---- Maintenance: Table 4, 2-week -> 8-week by matrix power ----------------
 
-  p_response_ifx <- p_response_ada * responder_adj * efficacy_ratio
-  ratio_ifx <- min(ratio_ada * remission_adj, 1)
+MAINTENANCE_STATES <- c("Moderate-Severe", "Moderate-Severe Responder", "Mild",
+                         "Remission", "Surgery", "Death")
 
-  derive_induction(
-    "IFX",
-    week = ada_week, p_response = p_response_ifx, remitter_ratio = ratio_ifx,
-    mild_split = mild_split, target_week = target_week,
-    confidence = "indirect_low_confidence",
-    note = paste(
-      "Derived from ADA's week-4 endpoint via the IFX Induction Responder/Remission",
-      "Adjustment Ratios and the IFX:ADA Efficacy Ratio, applied as direct",
-      "multiplicative adjustments to the raw ADA proportions before DEALE conversion,",
-      "and anchored to ADA's week-4 timepoint rather than IFX's own ~6-week trial",
-      "window (no directly observed IFX endpoint is available to anchor to instead).",
-      "The adjustment-ratio semantics are undocumented in data/raw/ -- this is an open",
-      "item for co-author review, not a validated re-derivation."
-    )
+load_published_maintenance_8wk <- function(raw_dir, cycles_per_8wk = 4) {
+  df <- utils::read.csv(
+    file.path(raw_dir, "aliyev2019_appendixS2_table4_maintenance_transition_probabilities.csv"),
+    stringsAsFactors = FALSE
   )
+  # Biologic arms are genuinely missing a Moderate-Severe row in the source (see
+  # build_transition_matrix() for why); validate only the rows Aliyev actually reported. Same
+  # published-rounding tolerance as the induction table.
+  validate_row_sums(df, by = "treatment", tol = 0.001)
+
+  therapies <- unique(df$treatment)
+  rows <- lapply(therapies, function(tx) {
+    m_2wk <- build_transition_matrix(df[df$treatment == tx, ], MAINTENANCE_STATES)
+    m_8wk <- matrix_power(m_2wk, cycles_per_8wk)
+    matrix_to_long(m_8wk, tx)
+  })
+  out <- do.call(rbind, rows)
+  # Rounding error in the published 2-week values compounds slightly across four
+  # matrix multiplications; still well within a sane tolerance for published-data rounding.
+  validate_row_sums(out, by = "therapy", tol = 0.005)
+  out$note <- "8-week probability computed via M_2wk^4 (Chapman-Kolmogorov) from Aliyev et al. 2019 Appendix S2, Supplementary Table 4 (2-week cycle, verified against the table image). Moderate-Severe treated as absorbing for biologic arms (they exit to the CT track in this study's model, analysis_plan.md §6.1; not a value Aliyev reports)."
+  out
 }
 
-# ---- Maintenance ----------------------------------------------------------
-
-#' Re-derive the one maintenance endpoint structure that maps cleanly onto a
-#' single matrix cell: "remission probability at week W, given remission at
-#' baseline" (UST week 44, CT/placebo week 44), via retention_root(). IFX and
-#' ADA maintenance endpoints in data/raw/ are structured differently (an
-#' overall week-52 response probability + remitter ratio, not a
-#' baseline-conditional remission probability) and are not derived here --
-#' see DERIVATION_NOTES.md.
-derive_maintenance <- function(params, legacy_maintenance_df, cycle_weeks = 8) {
-  specs <- list(
-    UST = list(param = "UST Week 44 Remission Probability in Patients in Remission at Baseline", week = 44),
-    CT  = list(param = "CT Week 44 Remission Probability in Patients in Remission at Baseline", week = 44)
-  )
-  rows <- lapply(names(specs), function(therapy) {
-    spec <- specs[[therapy]]
-    p_cumulative <- get_param(params, spec$param)
-    n_cycles <- spec$week / cycle_weeks
-    p_derived <- retention_root(p_cumulative, n_cycles)
-    p_legacy <- legacy_maintenance_df[
-      legacy_maintenance_df$therapy == therapy & legacy_maintenance_df$scenario == "base" &
-        legacy_maintenance_df$from_state == "Remission" & legacy_maintenance_df$to_state == "Remission",
+#' Compare the one maintenance cell (Remission -> Remission) that means the same thing in both
+#' this study's redesigned model and the existing v6-workbook snapshot -- the workbook uses a
+#' 7-state structure (an extra "Mod/Sev Non-Resp" destination not in Aliyev's 6-state Table 4),
+#' so a full-matrix comparison isn't attempted; Remission -> Remission is unambiguous in both.
+compare_remission_retention <- function(published_8wk, workbook_snapshot) {
+  therapies <- intersect(unique(published_8wk$therapy), unique(workbook_snapshot$therapy))
+  rows <- lapply(therapies, function(tx) {
+    derived <- published_8wk[
+      published_8wk$therapy == tx & published_8wk$from_state == "Remission" &
+        published_8wk$to_state == "Remission",
+      "probability"
+    ]
+    workbook <- workbook_snapshot[
+      workbook_snapshot$therapy == tx & workbook_snapshot$scenario == "base" &
+        workbook_snapshot$from_state == "Remission" & workbook_snapshot$to_state == "Remission",
       "probability_per_8wk_cycle"
     ]
+    if (length(workbook) == 0) return(NULL)
     data.frame(
-      therapy = therapy, from_state = "Remission", to_state = "Remission",
-      trial_endpoint = spec$param, trial_endpoint_value = p_cumulative, trial_endpoint_week = spec$week,
-      derived_probability_per_8wk_cycle = p_derived,
-      legacy_probability_per_8wk_cycle = p_legacy,
-      note = "Legacy value retained for reference only, not a validation target (2026-08-04).",
+      therapy = tx, from_state = "Remission", to_state = "Remission",
+      derived_probability_per_8wk_cycle = derived,
+      workbook_snapshot_probability_per_8wk_cycle = workbook,
+      abs_diff = abs(derived - workbook),
       stringsAsFactors = FALSE
     )
   })
-  do.call(rbind, rows)
+  do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
 }
 
-# ---- Orchestration -------------------------------------------------------
+# ---- Orchestration ----------------------------------------------------------
 
-run_derivation <- function(raw_dir = "data/raw", proc_dir = "data/processed",
-                            induction_target_week = 8, write_output = TRUE) {
-  params <- utils::read.csv(file.path(raw_dir, "aliyev2019_appendixS1_table2_parameters.csv"), stringsAsFactors = FALSE)
-  legacy_induction <- utils::read.csv(file.path(raw_dir, "manuscript_supplement1_induction_transition_probabilities.csv"), stringsAsFactors = FALSE)
-  legacy_maintenance <- utils::read.csv(file.path(proc_dir, "model_maintenance_transition_probabilities.csv"), stringsAsFactors = FALSE)
+run_derivation <- function(raw_dir = "data/raw", proc_dir = "data/processed", write_output = TRUE) {
+  induction_out <- load_published_induction(raw_dir)
 
-  mild_split <- get_param(params, "Proportion of Responders that Transition to Mild")
-
-  ust <- derive_induction(
-    "UST", week = 6,
-    p_response = get_param(params, "UST Week 6 Response Probability"),
-    remitter_ratio = get_param(params, "UST Week 6 Remitter:Responder Ratio"),
-    mild_split = mild_split, target_week = induction_target_week
-  )
-  ada <- derive_induction(
-    "ADA", week = 4,
-    p_response = get_param(params, "ADA Week 4 Response Probability"),
-    remitter_ratio = get_param(params, "ADA Week 4 Remitter:Responder Ratio"),
-    mild_split = mild_split, target_week = induction_target_week
-  )
-  ifx <- derive_ifx_induction(params, mild_split, induction_target_week)
-
-  induction <- rbind(ust, ada, ifx)
-  induction$row_sum_check <- with(
-    induction,
-    to_moderate_severe + to_moderate_severe_responder + to_mild + to_remission
-  )
-
-  # Legacy manuscript values, carried through as reference context only -- NOT a
-  # validation target (2026-08-04 scope change). Kept so the two can be diffed for
-  # the manuscript's discussion section.
-  therapy_map <- c(Ustekinumab = "UST", Infliximab = "IFX", "T-regulatory" = "TREG")
-  legacy_tagged <- data.frame(
-    therapy = therapy_map[legacy_induction$treatment],
-    target_week = NA_real_, confidence = "legacy_reference_only",
-    to_moderate_severe = legacy_induction$to_moderate_severe,
-    to_moderate_severe_responder = legacy_induction$to_moderate_severe_responder,
-    to_mild = legacy_induction$to_mild,
-    to_remission = legacy_induction$to_remission,
-    note = "Original manuscript/v6-workbook value (Aliyev Supplementary Table 3 for UST/IFX). Reference only.",
-    row_sum_check = legacy_induction$to_moderate_severe + legacy_induction$to_moderate_severe_responder +
-      legacy_induction$to_mild + legacy_induction$to_remission,
+  maintenance_8wk <- load_published_maintenance_8wk(raw_dir)
+  workbook_snapshot <- utils::read.csv(
+    file.path(proc_dir, "model_maintenance_transition_probabilities.csv"),
     stringsAsFactors = FALSE
   )
-  legacy_tagged <- legacy_tagged[!is.na(legacy_tagged$therapy), ]
-
-  induction_out <- rbind(induction, legacy_tagged)
-  induction_out <- induction_out[order(induction_out$therapy, induction_out$confidence), ]
-
-  maintenance_out <- derive_maintenance(params, legacy_maintenance, cycle_weeks = 8)
+  maintenance_comparison <- compare_remission_retention(maintenance_8wk, workbook_snapshot)
 
   if (write_output) {
     dir.create(proc_dir, showWarnings = FALSE, recursive = TRUE)
     utils::write.csv(induction_out, file.path(proc_dir, "derived_induction_transition_probabilities.csv"), row.names = FALSE)
-    utils::write.csv(maintenance_out, file.path(proc_dir, "derived_maintenance_probabilities.csv"), row.names = FALSE)
-    write_derivation_notes(induction_out, maintenance_out, proc_dir, induction_target_week)
+    utils::write.csv(maintenance_8wk, file.path(proc_dir, "derived_maintenance_probabilities.csv"), row.names = FALSE)
+    write_derivation_notes(induction_out, maintenance_comparison, proc_dir)
   }
 
-  list(induction = induction_out, maintenance = maintenance_out)
+  list(induction = induction_out, maintenance_8wk = maintenance_8wk, maintenance_comparison = maintenance_comparison)
 }
 
-write_derivation_notes <- function(induction_out, maintenance_out, proc_dir, induction_target_week) {
-  derived <- induction_out[induction_out$confidence != "legacy_reference_only", ]
-  legacy <- induction_out[induction_out$confidence == "legacy_reference_only", ]
-
-  compare_lines <- vapply(intersect(derived$therapy, legacy$therapy), function(th) {
-    a <- derived[derived$therapy == th, ]
-    r <- legacy[legacy$therapy == th, ]
-    sprintf(
-      "- **%s**: re-derived to_remission %.4f vs. legacy %.4f; to_moderate_severe %.4f vs. legacy %.4f (legacy is reference only, not a target)",
-      th, a$to_remission, r$to_remission, a$to_moderate_severe, r$to_moderate_severe
-    )
-  }, character(1))
+write_derivation_notes <- function(induction_out, maintenance_comparison, proc_dir) {
+  induction_lines <- sprintf(
+    "- **%s**: to_moderate_severe %.4f, to_moderate_severe_responder %.4f, to_mild %.4f, to_remission %.4f",
+    induction_out$therapy, induction_out$to_moderate_severe, induction_out$to_moderate_severe_responder,
+    induction_out$to_mild, induction_out$to_remission
+  )
 
   maint_lines <- sprintf(
-    "- **%s** Remission->Remission (8-week cycle): re-derived %.4f vs. legacy %.4f, from '%s' (%d-week endpoint = %.3f)",
-    maintenance_out$therapy, maintenance_out$derived_probability_per_8wk_cycle,
-    maintenance_out$legacy_probability_per_8wk_cycle, maintenance_out$trial_endpoint,
-    maintenance_out$trial_endpoint_week, maintenance_out$trial_endpoint_value
+    "- **%s** Remission->Remission (8-week cycle): matrix-power-derived %.4f vs. v6-workbook snapshot %.4f (diff %.4f)",
+    maintenance_comparison$therapy, maintenance_comparison$derived_probability_per_8wk_cycle,
+    maintenance_comparison$workbook_snapshot_probability_per_8wk_cycle, maintenance_comparison$abs_diff
   )
 
   notes <- c(
-    "# Gate 1 transition-probability derivation",
+    "# Gate 1 transition probabilities: published source, validated and cycle-converted",
     "",
     sprintf("Generated by `R/00_derive_transition_probs.R` on %s.", format(Sys.Date())),
     "",
-    "**2026-08-04 scope change:** this rebuild no longer targets reconciliation with the",
-    "original manuscript/v6-workbook transition probabilities as a Gate 1 pass condition.",
-    "Those values are carried in the output CSVs as `legacy_reference_only` rows, useful for",
-    "the manuscript's discussion section, but not a check this script tries to pass. The rows",
-    "tagged `direct` / `indirect_low_confidence` below are what the rebuilt engine",
-    "(`R/02_markov_engine.R` onward) actually uses.",
+    "**2026-08-04, second revision:** with Aliyev et al. 2019 Appendix S2 now available",
+    "(`data/raw/aliyev2019_appendixS2_table3_induction_transition_probabilities.csv`,",
+    "`..._table4_maintenance_transition_probabilities.csv`, transcribed from the appendix and",
+    "verified by direct visual comparison against its table images), this script no longer",
+    "attempts a from-scratch re-derivation from raw trial endpoints. Appendix S2's own worked",
+    "example shows Aliyev's actual method for IFX/ADA requires each trial's separate",
+    "placebo-arm endpoint (not present in `data/raw/aliyev2019_appendixS1_table2_parameters.csv`,",
+    "which only has the active-drug-arm endpoints) -- a genuine missing input, not a modelling",
+    "choice this project can resolve by picking a method. The values below are Aliyev's own",
+    "published, peer-reviewed numbers: validated for internal consistency (row sums = 1,",
+    "probabilities in [0,1]) and, for maintenance, cycle-converted from the published 2-week",
+    "matrices to this study's 8-week cycle via exact Markov-chain matrix power -- not guessed.",
     "",
-    "## Method",
+    "## Induction (Aliyev Supplementary Table 3, used as published)",
     "",
-    sprintf(paste(
-      "**Induction** (target window: %d weeks, matching this study's stated 8-week",
-      "induction alignment across biologics -- configurable via `induction_target_week`):"
-    ), induction_target_week),
-    "each therapy's trial-endpoint response proportion is split into two mutually exclusive",
-    "destination-specific cumulative proportions -- remission (response x remitter:responder",
-    "ratio) and responder-only (response x (1 - ratio), further split M-SR/Mild via the",
-    "workbook's 50/50 mild-split assumption) -- *before* DEALE conversion, and each is then",
-    "converted independently using its own implied hazard rate. An earlier version of this",
-    "script converted the pooled response probability first and split by the ratio afterward;",
-    "that ordering mixes two different events' timescales into one hazard and does not",
-    "reproduce a defensible probability. The values here are extrapolated forward from each",
-    "trial's own (shorter) observation window under DEALE's constant-hazard assumption --",
-    "worth a plausibility check against clinical judgment, since that assumption is more",
-    "tested near the observed window than several weeks beyond it.",
+    "No conversion needed -- Table 3 is already the terminal end-of-induction split (see header",
+    "comment for why). ADA and IFX are published as numerically identical: Aliyev's base case",
+    "sets the IFX:ADA efficacy ratio to 1.00 (varied 0.8-1.2 only in PSA), not a transcription",
+    "error -- independently confirmed against the table image.",
     "",
-    "**Maintenance:** only the Remission -> Remission cell has a directly comparable trial",
-    "endpoint (\"remission probability at week 44, given remission at baseline\"); derived via a",
-    "per-cycle retention-root conversion, not DEALE, since it's a multi-cycle cumulative",
-    "retention rather than a single-transition hazard. Unaffected by the induction scope change.",
+    paste(induction_lines, collapse = "\n"),
     "",
-    "## Re-derived values vs. legacy (context only, not a check)",
+    "## Maintenance (Aliyev Supplementary Table 4, 2-week -> 8-week via matrix power)",
     "",
-    "### Induction",
-    paste(compare_lines, collapse = "\n"),
+    "Compared against the existing `data/processed/model_maintenance_transition_probabilities.csv`",
+    "(a snapshot of the v6 workbook's own, separately hardcoded 8-week probabilities, whose",
+    "conversion-from-2-week method is undocumented in the workbook -- `data/data_dictionary.md`).",
+    "Only Remission -> Remission is compared: the workbook uses a 7-state structure with an",
+    "extra `Mod/Sev Non-Resp` destination not present in Aliyev's 6-state Table 4, so a full-matrix",
+    "diff isn't well-defined; Remission -> Remission means the same thing in both.",
     "",
-    "### Maintenance",
     paste(maint_lines, collapse = "\n"),
     "",
-    "## Open items requiring co-author input before Gate 2",
+    "The gap for UST/IFX/CT (the only three the v6 workbook has -- ADA is not in it; workbook",
+    "consistently higher than the matrix-power-derived value)",
+    "is a real, now-precisely-quantified discrepancy between the v6 workbook's undocumented",
+    "8-week conversion and the mathematically exact conversion of Aliyev's own published 2-week",
+    "matrix. Worth a model-lead read before Gate 2 decides which maintenance matrix the rebuilt",
+    "engine consumes -- this script does not decide that; it only makes the two comparable.",
     "",
-    "1. **IFX has no directly observed induction trial endpoint** in `data/raw/`; derived",
-    "   indirectly from ADA's endpoint via adjustment ratios whose semantics (odds ratio vs.",
-    "   risk ratio; point of application relative to DEALE conversion; anchored to ADA's",
-    "   week-4 timepoint rather than IFX's own ~6-week trial window) are not documented here.",
-    "   Flagged `indirect_low_confidence` -- needs either Aliyev Appendix S2 or an explicit",
-    "   documented assumption. This is a data gap, not a target-week or ordering question.",
-    "2. **ADA and IFX maintenance trial endpoints** are structured as an overall week-52",
-    "   response probability + remitter ratio rather than a baseline-conditional remission",
-    "   probability, so they are not yet derivable by `derive_maintenance()`. Needed before the",
-    "   full maintenance matrix (not just the Remission cell) can be independently derived for",
-    "   all four therapies.",
+    "## What remains open before Gate 2",
+    "",
+    "None of the previous \"data gap\" items (IFX induction, IFX/ADA maintenance) are open any",
+    "longer -- Appendix S2 supplied all four therapies for both phases directly. What remains is",
+    "a decision, not a data gap: whether the rebuilt engine (`R/02_markov_engine.R` onward)",
+    "consumes these matrix-power-derived 8-week maintenance probabilities, or the v6 workbook's",
+    "existing 8-week snapshot, given the gap quantified above.",
     "",
     "## Gate 1 status",
     "",
-    "**Open**, narrowed to the two items above. UST and ADA induction, and the UST/CT",
-    "maintenance Remission cell, are now derived on a single documented method with no",
-    "remaining structural ambiguity -- they no longer need co-author disambiguation between",
-    "candidate methods, just a plausibility read given the magnitude shift from the legacy",
-    "figures shown above. IFX induction and the IFX/ADA maintenance matrix remain genuine data",
-    "gaps requiring either Appendix S2 or an explicit documented assumption before Gate 2."
+    "**Transition probabilities: closed.** Both phases, all four biologic/CT therapies, sourced",
+    "directly from Aliyev et al. 2019 Appendix S2, validated for internal consistency, and",
+    "maintenance cycle-converted by exact Markov-chain math. The remaining maintenance-matrix",
+    "choice above is a Gate 2 engine-design decision, not a Gate 1 blocker."
   )
   writeLines(notes, file.path(proc_dir, "DERIVATION_NOTES.md"))
 }

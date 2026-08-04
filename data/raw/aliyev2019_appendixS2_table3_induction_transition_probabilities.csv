@@ -1,0 +1,49 @@
+phase,treatment,from_state,to_state,probability
+induction,UST,Moderate-Severe,Moderate-Severe,0.791
+induction,UST,Moderate-Severe,Moderate-Severe Responder,0.0377
+induction,UST,Moderate-Severe,Mild,0.0377
+induction,UST,Moderate-Severe,Remission,0.133
+induction,UST,Moderate-Severe Responder,Moderate-Severe,0
+induction,UST,Moderate-Severe Responder,Moderate-Severe Responder,1
+induction,UST,Moderate-Severe Responder,Mild,0
+induction,UST,Moderate-Severe Responder,Remission,0
+induction,UST,Mild,Moderate-Severe,0
+induction,UST,Mild,Moderate-Severe Responder,0
+induction,UST,Mild,Mild,1
+induction,UST,Mild,Remission,0
+induction,UST,Remission,Moderate-Severe,0
+induction,UST,Remission,Moderate-Severe Responder,0
+induction,UST,Remission,Mild,0
+induction,UST,Remission,Remission,1
+induction,IFX,Moderate-Severe,Moderate-Severe,0.756
+induction,IFX,Moderate-Severe,Moderate-Severe Responder,0.0208
+induction,IFX,Moderate-Severe,Mild,0.0208
+induction,IFX,Moderate-Severe,Remission,0.203
+induction,IFX,Moderate-Severe Responder,Moderate-Severe,0
+induction,IFX,Moderate-Severe Responder,Moderate-Severe Responder,1
+induction,IFX,Moderate-Severe Responder,Mild,0
+induction,IFX,Moderate-Severe Responder,Remission,0
+induction,IFX,Mild,Moderate-Severe,0
+induction,IFX,Mild,Moderate-Severe Responder,0
+induction,IFX,Mild,Mild,1
+induction,IFX,Mild,Remission,0
+induction,IFX,Remission,Moderate-Severe,0
+induction,IFX,Remission,Moderate-Severe Responder,0
+induction,IFX,Remission,Mild,0
+induction,IFX,Remission,Remission,1
+induction,ADA,Moderate-Severe,Moderate-Severe,0.756
+induction,ADA,Moderate-Severe,Moderate-Severe Responder,0.0208
+induction,ADA,Moderate-Severe,Mild,0.0208
+induction,ADA,Moderate-Severe,Remission,0.203
+induction,ADA,Moderate-Severe Responder,Moderate-Severe,0
+induction,ADA,Moderate-Severe Responder,Moderate-Severe Responder,1
+induction,ADA,Moderate-Severe Responder,Mild,0
+induction,ADA,Moderate-Severe Responder,Remission,0
+induction,ADA,Mild,Moderate-Severe,0
+induction,ADA,Mild,Moderate-Severe Responder,0
+induction,ADA,Mild,Mild,1
+induction,ADA,Mild,Remission,0
+induction,ADA,Remission,Moderate-Severe,0
+induction,ADA,Remission,Moderate-Severe Responder,0
+induction,ADA,Remission,Mild,0
+induction,ADA,Remission,Remission,1

@@ -1,7 +1,4 @@
-"therapy","target_week","confidence","to_moderate_severe","to_moderate_severe_responder","to_mild","to_remission","note","row_sum_check"
-"ADA",8,"direct",0.1492,0.1302,0.1302,0.5904,"",1
-"IFX",8,"indirect_low_confidence",0.48760471683072,0.07234880479232,0.07234880479232,0.36769767358464,"Derived from ADA's week-4 endpoint via the IFX Induction Responder/Remission Adjustment Ratios and the IFX:ADA Efficacy Ratio, applied as direct multiplicative adjustments to the raw ADA proportions before DEALE conversion, and anchored to ADA's week-4 timepoint rather than IFX's own ~6-week trial window (no directly observed IFX endpoint is available to anchor to instead). The adjustment-ratio semantics are undocumented in data/raw/ -- this is an open item for co-author review, not a validated re-derivation.",1
-"IFX",NA,"legacy_reference_only",0.756,0.0208,0.0208,0.203,"Original manuscript/v6-workbook value (Aliyev Supplementary Table 3 for UST/IFX). Reference only.",1.0006
-"TREG",NA,"legacy_reference_only",0.3368,0.0708,0.10689,0.4855,"Original manuscript/v6-workbook value (Aliyev Supplementary Table 3 for UST/IFX). Reference only.",0.99999
-"UST",8,"direct",0.293579540618168,0.133122121285179,0.133122121285179,0.440176216811474,"",1
-"UST",NA,"legacy_reference_only",0.791,0.0377,0.0377,0.133,"Original manuscript/v6-workbook value (Aliyev Supplementary Table 3 for UST/IFX). Reference only.",0.9994
+"therapy","confidence","to_moderate_severe","to_moderate_severe_responder","to_mild","to_remission","note"
+"UST","published_source",0.791,0.0377,0.0377,0.133,"Aliyev et al. 2019 Appendix S2, Supplementary Table 3 (verified against the table image; PHAR2208 supplementary materials). Used as published, no conversion applied."
+"IFX","published_source",0.756,0.0208,0.0208,0.203,"Aliyev et al. 2019 Appendix S2, Supplementary Table 3 (verified against the table image; PHAR2208 supplementary materials). Used as published, no conversion applied."
+"ADA","published_source",0.756,0.0208,0.0208,0.203,"Aliyev et al. 2019 Appendix S2, Supplementary Table 3 (verified against the table image; PHAR2208 supplementary materials). Used as published, no conversion applied."

@@ -1,0 +1,127 @@
+phase,treatment,from_state,to_state,probability
+maintenance,UST,Moderate-Severe Responder,Moderate-Severe,0.0942
+maintenance,UST,Moderate-Severe Responder,Moderate-Severe Responder,0.441
+maintenance,UST,Moderate-Severe Responder,Mild,0.441
+maintenance,UST,Moderate-Severe Responder,Remission,0
+maintenance,UST,Moderate-Severe Responder,Surgery,0.0238
+maintenance,UST,Moderate-Severe Responder,Death,0.00006
+maintenance,UST,Mild,Moderate-Severe,0.1007
+maintenance,UST,Mild,Moderate-Severe Responder,0.441
+maintenance,UST,Mild,Mild,0.441
+maintenance,UST,Mild,Remission,0.0173
+maintenance,UST,Mild,Surgery,0
+maintenance,UST,Mild,Death,0.00006
+maintenance,UST,Remission,Moderate-Severe,0
+maintenance,UST,Remission,Moderate-Severe Responder,0
+maintenance,UST,Remission,Mild,0.0182
+maintenance,UST,Remission,Remission,0.982
+maintenance,UST,Remission,Surgery,0
+maintenance,UST,Remission,Death,0.00006
+maintenance,UST,Surgery,Moderate-Severe,0.0153
+maintenance,UST,Surgery,Moderate-Severe Responder,0.010
+maintenance,UST,Surgery,Mild,0.010
+maintenance,UST,Surgery,Remission,0.868
+maintenance,UST,Surgery,Surgery,0.0976
+maintenance,UST,Surgery,Death,0.00006
+maintenance,UST,Death,Moderate-Severe,0
+maintenance,UST,Death,Moderate-Severe Responder,0
+maintenance,UST,Death,Mild,0
+maintenance,UST,Death,Remission,0
+maintenance,UST,Death,Surgery,0
+maintenance,UST,Death,Death,1
+maintenance,IFX,Moderate-Severe Responder,Moderate-Severe,0.0434
+maintenance,IFX,Moderate-Severe Responder,Moderate-Severe Responder,0.466
+maintenance,IFX,Moderate-Severe Responder,Mild,0.466
+maintenance,IFX,Moderate-Severe Responder,Remission,0
+maintenance,IFX,Moderate-Severe Responder,Surgery,0.0238
+maintenance,IFX,Moderate-Severe Responder,Death,0.00006
+maintenance,IFX,Mild,Moderate-Severe,0.0532
+maintenance,IFX,Mild,Moderate-Severe Responder,0.466
+maintenance,IFX,Mild,Mild,0.466
+maintenance,IFX,Mild,Remission,0.01405
+maintenance,IFX,Mild,Surgery,0
+maintenance,IFX,Mild,Death,0.00006
+maintenance,IFX,Remission,Moderate-Severe,0
+maintenance,IFX,Remission,Moderate-Severe Responder,0
+maintenance,IFX,Remission,Mild,0.010
+maintenance,IFX,Remission,Remission,0.990
+maintenance,IFX,Remission,Surgery,0
+maintenance,IFX,Remission,Death,0.00006
+maintenance,IFX,Surgery,Moderate-Severe,0.0153
+maintenance,IFX,Surgery,Moderate-Severe Responder,0.010
+maintenance,IFX,Surgery,Mild,0.010
+maintenance,IFX,Surgery,Remission,0.868
+maintenance,IFX,Surgery,Surgery,0.0976
+maintenance,IFX,Surgery,Death,0.00006
+maintenance,IFX,Death,Moderate-Severe,0
+maintenance,IFX,Death,Moderate-Severe Responder,0
+maintenance,IFX,Death,Mild,0
+maintenance,IFX,Death,Remission,0
+maintenance,IFX,Death,Surgery,0
+maintenance,IFX,Death,Death,1
+maintenance,ADA,Moderate-Severe Responder,Moderate-Severe,0.0773
+maintenance,ADA,Moderate-Severe Responder,Moderate-Severe Responder,0.449
+maintenance,ADA,Moderate-Severe Responder,Mild,0.449
+maintenance,ADA,Moderate-Severe Responder,Remission,0
+maintenance,ADA,Moderate-Severe Responder,Surgery,0.0238
+maintenance,ADA,Moderate-Severe Responder,Death,0.00006
+maintenance,ADA,Mild,Moderate-Severe,0.0871
+maintenance,ADA,Mild,Moderate-Severe Responder,0.449
+maintenance,ADA,Mild,Mild,0.449
+maintenance,ADA,Mild,Remission,0.01405
+maintenance,ADA,Mild,Surgery,0
+maintenance,ADA,Mild,Death,0.00006
+maintenance,ADA,Remission,Moderate-Severe,0
+maintenance,ADA,Remission,Moderate-Severe Responder,0
+maintenance,ADA,Remission,Mild,0.010
+maintenance,ADA,Remission,Remission,0.990
+maintenance,ADA,Remission,Surgery,0
+maintenance,ADA,Remission,Death,0.00006
+maintenance,ADA,Surgery,Moderate-Severe,0.0153
+maintenance,ADA,Surgery,Moderate-Severe Responder,0.010
+maintenance,ADA,Surgery,Mild,0.010
+maintenance,ADA,Surgery,Remission,0.868
+maintenance,ADA,Surgery,Surgery,0.0976
+maintenance,ADA,Surgery,Death,0.00006
+maintenance,ADA,Death,Moderate-Severe,0
+maintenance,ADA,Death,Moderate-Severe Responder,0
+maintenance,ADA,Death,Mild,0
+maintenance,ADA,Death,Remission,0
+maintenance,ADA,Death,Surgery,0
+maintenance,ADA,Death,Death,1
+maintenance,CT,Moderate-Severe,Moderate-Severe,0.854
+maintenance,CT,Moderate-Severe,Moderate-Severe Responder,0.050
+maintenance,CT,Moderate-Severe,Mild,0.050
+maintenance,CT,Moderate-Severe,Remission,0
+maintenance,CT,Moderate-Severe,Surgery,0.0456
+maintenance,CT,Moderate-Severe,Death,0.00006
+maintenance,CT,Moderate-Severe Responder,Moderate-Severe,0.0608
+maintenance,CT,Moderate-Severe Responder,Moderate-Severe Responder,0.447
+maintenance,CT,Moderate-Severe Responder,Mild,0.447
+maintenance,CT,Moderate-Severe Responder,Remission,0
+maintenance,CT,Moderate-Severe Responder,Surgery,0.0456
+maintenance,CT,Moderate-Severe Responder,Death,0.00006
+maintenance,CT,Mild,Moderate-Severe,0.0957
+maintenance,CT,Mild,Moderate-Severe Responder,0.447
+maintenance,CT,Mild,Mild,0.447
+maintenance,CT,Mild,Remission,0.0108
+maintenance,CT,Mild,Surgery,0
+maintenance,CT,Mild,Death,0.00006
+maintenance,CT,Remission,Moderate-Severe,0
+maintenance,CT,Remission,Moderate-Severe Responder,0
+maintenance,CT,Remission,Mild,0.0350
+maintenance,CT,Remission,Remission,0.965
+maintenance,CT,Remission,Surgery,0
+maintenance,CT,Remission,Death,0.00006
+maintenance,CT,Surgery,Moderate-Severe,0.0153
+maintenance,CT,Surgery,Moderate-Severe Responder,0.010
+maintenance,CT,Surgery,Mild,0.010
+maintenance,CT,Surgery,Remission,0.868
+maintenance,CT,Surgery,Surgery,0.0976
+maintenance,CT,Surgery,Death,0.00006
+maintenance,CT,Death,Moderate-Severe,0
+maintenance,CT,Death,Moderate-Severe Responder,0
+maintenance,CT,Death,Mild,0
+maintenance,CT,Death,Remission,0
+maintenance,CT,Death,Surgery,0
+maintenance,CT,Death,Death,1

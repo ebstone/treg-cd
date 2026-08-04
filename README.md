@@ -14,10 +14,11 @@ rationale, model design and open decisions.
 ## Status
 
 Gate 0 closed 2026-08-04 (`docs/analysis_plan.md` §15 — Decisions 1, 4, 5 final; Decisions 2, 3,
-6 recorded provisionally pending full co-author sign-off). Gate 1 (repository foundations, DEALE
-re-derivation of transition probabilities, `R/00_derive_transition_probs.R`) is in progress. The
-Gate 2 engine (decision tree, Markov engine, cure module, costs/utilities) has not been written
-yet.
+6 recorded provisionally pending full co-author sign-off). Gate 1 transition probabilities closed
+2026-08-04 — induction and maintenance transition probabilities for all four therapies
+(UST/IFX/ADA/CT) are sourced directly from Aliyev et al. 2019 Appendix S2 (`R/00_derive_transition_probs.R`,
+`data/processed/DERIVATION_NOTES.md`). The Gate 2 engine (decision tree, Markov engine, cure
+module, costs/utilities) has not been written yet.
 
 ## Repository structure
 

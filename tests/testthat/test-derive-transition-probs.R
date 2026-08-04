@@ -12,68 +12,104 @@ run_from_repo_root <- function(...) {
   )
 }
 
-test_that("deale_convert reproduces the analysis_plan.md §7.3 worked example", {
-  # UST week-6 remission 0.349 -> annual rate 3.720 -> 2-week probability 0.133
-  expect_equal(deale_convert(0.349, 6, 2), 0.133, tolerance = 0.001)
-})
-
-test_that("deale_convert is the identity when t_from == t_to", {
-  expect_equal(deale_convert(0.4, 8, 8), 0.4, tolerance = 1e-9)
-})
-
-test_that("deale_convert is monotonically increasing in t_to", {
-  short <- deale_convert(0.5, 10, 2)
-  long <- deale_convert(0.5, 10, 12)
-  expect_lt(short, long)
-})
-
-test_that("deale_convert rejects out-of-range probabilities", {
-  expect_error(deale_convert(-0.1, 6, 2))
-  expect_error(deale_convert(1, 6, 2))
-})
-
-test_that("retention_root inverts a stationary per-cycle Markov process", {
-  p_per_cycle <- 0.93
-  n_cycles <- 5.5
-  p_cumulative <- p_per_cycle^n_cycles
-  expect_equal(retention_root(p_cumulative, n_cycles), p_per_cycle, tolerance = 1e-9)
-})
-
-test_that("derive_induction is the identity decomposition when target_week == week (no extrapolation)", {
-  out <- derive_induction("TEST", week = 6, p_response = 0.56, remitter_ratio = 0.63,
-                           mild_split = 0.5, target_week = 6)
-  expect_equal(out$to_remission, 0.56 * 0.63, tolerance = 1e-9)
-  expect_equal(
-    out$to_moderate_severe + out$to_moderate_severe_responder + out$to_mild + out$to_remission,
-    1, tolerance = 1e-9
+test_that("validate_row_sums passes a well-formed transition table", {
+  df <- data.frame(
+    treatment = c("A", "A", "B", "B"),
+    from_state = c("X", "X", "X", "X"),
+    to_state = c("X", "Y", "X", "Y"),
+    probability = c(0.4, 0.6, 0.9, 0.1)
   )
+  expect_true(validate_row_sums(df, by = "treatment"))
 })
 
-test_that("derive_induction destination probabilities stay in [0,1] and sum to 1 when extrapolating forward", {
-  out <- derive_induction("TEST", week = 6, p_response = 0.56, remitter_ratio = 0.63,
-                           mild_split = 0.5, target_week = 8)
-  total <- out$to_moderate_severe + out$to_moderate_severe_responder + out$to_mild + out$to_remission
-  expect_equal(total, 1, tolerance = 1e-9)
-  for (col in c("to_moderate_severe", "to_moderate_severe_responder", "to_mild", "to_remission")) {
-    expect_true(out[[col]] >= 0 && out[[col]] <= 1, info = col)
-  }
+test_that("validate_row_sums catches rows that don't sum to 1", {
+  df <- data.frame(
+    treatment = c("A", "A"),
+    from_state = c("X", "X"),
+    to_state = c("X", "Y"),
+    probability = c(0.4, 0.4)
+  )
+  expect_error(validate_row_sums(df, by = "treatment"), "Row sums not equal to 1")
 })
 
-test_that("derive_induction fails loudly rather than returning a negative probability when over-extrapolated", {
-  # ADA-shaped inputs (week 4, response 0.5, remitter ratio 0.72) are the tightest margin among
-  # the therapies this script derives -- to_moderate_severe goes negative above target_week
-  # ~10.2. This must error, not silently return an invalid probability that could corrupt a
-  # downstream Markov engine.
-  expect_error(
-    derive_induction("ADA", week = 4, p_response = 0.5, remitter_ratio = 0.72,
-                      mild_split = 0.5, target_week = 12),
-    "invalid non-response probability"
+test_that("validate_row_sums catches out-of-range probabilities", {
+  df <- data.frame(
+    treatment = "A", from_state = "X", to_state = c("X", "Y"), probability = c(1.5, -0.5)
   )
-  # Comfortably within range at the actual base-case target_week (8) used by run_derivation().
-  expect_no_error(
-    derive_induction("ADA", week = 4, p_response = 0.5, remitter_ratio = 0.72,
-                      mild_split = 0.5, target_week = 8)
+  expect_error(validate_row_sums(df, by = "treatment"))
+})
+
+test_that("build_transition_matrix pads a missing from_state as an absorbing self-loop", {
+  df <- data.frame(
+    from_state = c("A", "A"), to_state = c("A", "B"), probability = c(0.3, 0.7),
+    stringsAsFactors = FALSE
   )
+  m <- build_transition_matrix(df, states = c("A", "B"))
+  expect_equal(unname(m["A", ]), c(0.3, 0.7))
+  expect_equal(unname(m["B", ]), c(0, 1))
+})
+
+test_that("matrix_power(m, 1) is the identity operation", {
+  m <- matrix(c(0.5, 0.5, 0.2, 0.8), nrow = 2, byrow = TRUE, dimnames = list(c("A", "B"), c("A", "B")))
+  expect_equal(matrix_power(m, 1), m)
+})
+
+test_that("matrix_power correctly composes a two-state chain (hand-computable)", {
+  # Simple 2-state chain: from A, 0.5 stay / 0.5 go to B; from B, always stay.
+  m <- matrix(c(0.5, 0.5, 0, 1), nrow = 2, byrow = TRUE, dimnames = list(c("A", "B"), c("A", "B")))
+  m2 <- matrix_power(m, 2)
+  # P(A->A after 2 steps) = 0.5 * 0.5 = 0.25; P(A->B after 2 steps) = 1 - 0.25 = 0.75
+  expect_equal(m2["A", "A"], 0.25, tolerance = 1e-9)
+  expect_equal(m2["A", "B"], 0.75, tolerance = 1e-9)
+  expect_equal(m2["B", "B"], 1, tolerance = 1e-9)
+})
+
+test_that("matrix_to_long round-trips through build_transition_matrix", {
+  m <- matrix(c(0.3, 0.7, 0.1, 0.9), nrow = 2, byrow = TRUE, dimnames = list(c("A", "B"), c("A", "B")))
+  long <- matrix_to_long(m, therapy = "TEST")
+  expect_setequal(long$therapy, "TEST")
+  rebuilt <- build_transition_matrix(
+    data.frame(from_state = long$from_state, to_state = long$to_state, probability = long$probability),
+    states = c("A", "B")
+  )
+  expect_equal(rebuilt, m)
+})
+
+test_that("load_published_induction reproduces the verified Table 3 values and sums to 1", {
+  out <- load_published_induction(repo_root_relative("data", "raw"))
+  expect_setequal(out$therapy, c("UST", "IFX", "ADA"))
+
+  ust <- out[out$therapy == "UST", ]
+  expect_equal(ust$to_moderate_severe, 0.791)
+  expect_equal(ust$to_remission, 0.133)
+
+  # ADA and IFX are published as numerically identical (IFX:ADA efficacy ratio = 1.00 base case),
+  # confirmed against the appendix table image -- not a transcription error.
+  ada <- out[out$therapy == "ADA", ]
+  ifx <- out[out$therapy == "IFX", ]
+  expect_equal(ada$to_remission, ifx$to_remission)
+
+  # Published values are rounded to 3-4 significant figures, so rows sum to ~1, not exactly 1.
+  totals <- out$to_moderate_severe + out$to_moderate_severe_responder + out$to_mild + out$to_remission
+  expect_true(all(abs(totals - 1) < 0.001))
+})
+
+test_that("load_published_maintenance_8wk produces valid, row-sum-1 matrices for all four therapies", {
+  out <- load_published_maintenance_8wk(repo_root_relative("data", "raw"))
+  expect_setequal(out$therapy, c("UST", "IFX", "ADA", "CT"))
+  # Rounding in the published 2-week values compounds slightly across four matrix
+  # multiplications (up to ~0.2% off), same allowance run_derivation() uses.
+  expect_true(all(out$probability >= -1e-9 & out$probability <= 1 + 1e-9))
+  expect_true(validate_row_sums(out, by = "therapy", tol = 0.005))
+})
+
+test_that("load_published_maintenance_8wk: Moderate-Severe is absorbing for biologic arms, not for CT", {
+  out <- load_published_maintenance_8wk(repo_root_relative("data", "raw"))
+  ust_ms_to_ms <- out[out$therapy == "UST" & out$from_state == "Moderate-Severe" & out$to_state == "Moderate-Severe", "probability"]
+  expect_equal(ust_ms_to_ms, 1)
+
+  ct_ms_to_ms <- out[out$therapy == "CT" & out$from_state == "Moderate-Severe" & out$to_state == "Moderate-Severe", "probability"]
+  expect_true(ct_ms_to_ms < 1)
 })
 
 test_that("run_derivation produces deterministic output", {
@@ -82,43 +118,8 @@ test_that("run_derivation produces deterministic output", {
   expect_equal(first, second)
 })
 
-test_that("every derived (non-legacy) induction row sums to 1 and lies in [0,1]", {
+test_that("maintenance comparison against the workbook snapshot covers UST, IFX, CT (ADA is not in the v6 workbook)", {
   result <- run_from_repo_root(write_output = FALSE)
-  computed <- result$induction[result$induction$confidence != "legacy_reference_only", ]
-
-  expect_true(all(computed$row_sum_check >= 1 - 1e-9 & computed$row_sum_check <= 1 + 1e-9))
-
-  dest_cols <- c("to_moderate_severe", "to_moderate_severe_responder", "to_mild", "to_remission")
-  for (col in dest_cols) {
-    expect_true(all(computed[[col]] >= 0 & computed[[col]] <= 1), info = col)
-  }
-})
-
-test_that("legacy rows are carried through unchanged as reference context", {
-  result <- run_from_repo_root(write_output = FALSE)
-  legacy <- result$induction[result$induction$confidence == "legacy_reference_only", ]
-
-  expect_setequal(legacy$therapy, c("UST", "IFX", "TREG"))
-  ust_legacy <- legacy[legacy$therapy == "UST", ]
-  expect_equal(ust_legacy$to_remission, 0.133)
-})
-
-test_that("derived UST induction is an independent re-derivation, not a copy of the legacy value", {
-  result <- run_from_repo_root(write_output = FALSE)
-  derived_ust <- result$induction[result$induction$therapy == "UST" & result$induction$confidence == "direct", ]
-  expect_false(isTRUE(all.equal(derived_ust$to_remission, 0.133, tolerance = 1e-6)))
-})
-
-test_that("IFX induction is flagged low-confidence (data gap, not resolved by this script)", {
-  result <- run_from_repo_root(write_output = FALSE)
-  ifx <- result$induction[result$induction$therapy == "IFX" & result$induction$confidence != "legacy_reference_only", ]
-  expect_equal(ifx$confidence, "indirect_low_confidence")
-})
-
-test_that("maintenance derivation covers UST and CT with finite, in-range probabilities", {
-  result <- run_from_repo_root(write_output = FALSE)
-  expect_setequal(result$maintenance$therapy, c("UST", "CT"))
-  expect_true(all(is.finite(result$maintenance$derived_probability_per_8wk_cycle)))
-  expect_true(all(result$maintenance$derived_probability_per_8wk_cycle >= 0 &
-    result$maintenance$derived_probability_per_8wk_cycle <= 1))
+  expect_setequal(result$maintenance_comparison$therapy, c("UST", "IFX", "CT"))
+  expect_true(all(is.finite(result$maintenance_comparison$abs_diff)))
 })
