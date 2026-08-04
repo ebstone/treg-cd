@@ -4,8 +4,8 @@
 
 **Prepared for:** D. Jadambaa, E. Stone, B. Abraham (Johns Hopkins Bloomberg School of Public Health)
 **Target journal:** *PharmacoEconomics* (Springer/Adis, journal 40273) — Original Research Article
-**Document version:** 1.0 | 3 August 2026
-**Status:** DRAFT FOR CO-AUTHOR REVIEW. Six decisions in Section 15 require explicit sign-off before analytic work resumes.
+**Document version:** 1.1 | 4 August 2026
+**Status:** Gate 0 closed 4 August 2026 (see Section 15) — Decisions 1, 4 and 5 recorded as final; Decisions 2, 3 and 6 recorded provisionally pending full co-author sign-off. Gate 1 (repository foundations, DEALE re-derivation) in progress.
 
 ---
 
@@ -556,7 +556,7 @@ Sequenced so that structural decisions precede parameterisation, and parameteris
 
 | Phase | Weeks | Tasks | Lead | Gate |
 |---|---|---|---|---|
-| **0. Sign-off** | 1 | Review this document; resolve Decisions 1–6 in a single meeting; record decisions in `docs/analysis_plan.md` | All three | **Gate 0: no coding before this closes** |
+| **0. Sign-off** | 1 | Review this document; resolve Decisions 1–6 in a single meeting; record decisions in `docs/analysis_plan.md` | All three | **Gate 0: no coding before this closes — closed 2026-08-04 (Decisions 1, 4, 5 final; 2, 3, 6 provisional, see §15)** |
 | **1. Foundations** | 2–3 | Set up repository, `renv`, testing harness. Re-derive all transition probabilities from published endpoints via DEALE (§7.3) and diff against v6. Resolve and document the inflation index (§8). Re-extract comparator ASP at a stated date | Model lead (Jadambaa) | **Gate 1: re-derived probabilities reconcile with v6, or discrepancies are explained in writing** |
 | **2. Engine** | 3–5 | Build decision tree, Markov engine, cure module, cost/utility module. Reproduce the v6 base case as a regression test before adding the cure structure — then reproduce Aliyev's published results as external validation | Model lead | **Gate 2: v6 and Aliyev both reproduced** |
 | **3. Parameterisation** | 4–6 (parallel) | Cure-fraction elicitation protocol, session, and fitting. Source refractory-population multipliers. Source eligible-population denominators for VOI. Adverse-event and administration cost inputs | Clinical lead (Abraham) with senior author (Stone) | **Gate 3: parameter table frozen and reviewed** |
@@ -573,29 +573,35 @@ Sequenced so that structural decisions precede parameterisation, and parameteris
 
 Each requires an explicit yes/no or selection. Record the outcome, with date, in `docs/analysis_plan.md`.
 
-**☐ Decision 1 — Reinstate the 2-year biologic-maintenance-to-CT cap?**
+**☑ Decision 1 — Reinstate the 2-year biologic-maintenance-to-CT cap?**
 *Recommendation:* **Yes for UST/IFX/ADA in the base case; never for cured (SDR) Treg patients; yes for non-cured Treg responders. Report the no-cap structural scenario alongside.**
 *Rationale:* we are borrowing Aliyev's transition probabilities, and they were estimated for a structure containing that cap; using them without it is an unvalidated extrapolation. Be aware this moves the result against Treg. *Would change if:* a sourced real-world persistence curve is available, which would be better than either binary choice.
+*Recorded 2026-08-04 (E. Stone):* **Yes — adopted as recommended.** Cap applies to UST/IFX/ADA and non-cured Treg responders after cycle 13; never applies to cured (SDR) Treg patients. No-cap scenario to be retained alongside the base case. Final.
 
-**☐ Decision 2 — Add adalimumab as a third biologic comparator?**
+**☑ Decision 2 — Add adalimumab as a third biologic comparator?**
 *Recommendation:* **Yes.**
 *Rationale:* Aliyev supplies the parameters at no derivation cost, it restores the original three-way comparison, and omitting the cheapest widely-used biologic from a cost-effectiveness comparison invites the criticism that the comparator set was chosen to flatter the intervention. *Would change if:* word-count pressure becomes acute — but ADA belongs in the model even if it is reported only in supplementary material.
+*Recorded 2026-08-04 (E. Stone), provisional pending full co-author sign-off:* **Yes — adopted as recommended.** ADA included as a comparator arm, reported in supplementary material if main-text word count is tight.
 
-**☐ Decision 3 — Base-case population: biologic-naïve, refractory, or both?**
+**☑ Decision 3 — Base-case population: biologic-naïve, refractory, or both?**
 *Recommendation:* **Both, with biologic-naïve as base case and refractory as a co-primary scenario reported in the main text.**
 *Rationale:* biologic-naïve preserves comparability with Aliyev and NICE TA456 and keeps every comparator parameter valid; refractory is where the technology would actually first be used. *Would change if:* the co-authors decide the paper's primary audience is the developer rather than the HTA community, in which case invert the two.
+*Recorded 2026-08-04 (E. Stone), provisional pending full co-author sign-off:* **Both — adopted as recommended.** Biologic-naïve is the base case; refractory reported as a co-primary scenario in the main text.
 
-**☐ Decision 4 — What anchors the base-case cure fraction and relapse hazard?**
+**☑ Decision 4 — What anchors the base-case cure fraction and relapse hazard?**
 *Recommendation:* **None of the three analogs. Anchor the base case on documented structured expert elicitation, present all three analogs as named scenarios plus a null (π = 0) case, and report the required cure fraction (headroom) as a co-primary result.**
 *Rationale:* the published analogs give a qualitative pattern and, in the optimistic case, an unpublished denominator — not an estimable fraction. Reporting the required π converts the largest unknown from an input into an output. *Would change if:* elicitation is judged infeasible, in which case fall back to an explicit uniform prior over π and let the headroom analysis carry the paper. Do not fall back to a point estimate.
+*Recorded 2026-08-04 (E. Stone):* **Elicitation deferred for now — fall back to the documented alternative.** π is swept as an explicit uniform variable over the full 0–100% range (not a point estimate), with the headroom analysis (minimum π\* for cost-effectiveness at a given price) as the co-primary result per Aim 4. In addition to the continuous sweep, report named scenario points at π = 0% (null/floor case), 50%, 75%, and 90%, each carrying its own relapse hazard h consistent with §7.2's optimistic/moderate/pessimistic framing. Structured expert elicitation remains open to revisit if it becomes feasible before Gate 3. Final for now, revisit at Gate 3.
 
-**☐ Decision 5 — Cost reconciliation and dollar year.**
+**☑ Decision 5 — Cost reconciliation and dollar year.**
 *Recommendation:* **Adopt 2025 USD throughout** (or 2026, if publication timing warrants). The reconciliation is resolved in §8: Aliyev's 2017 per-cycle costs ($217 M-S and M-SR, $91 Mild, $10 Remission, $67 CT) inflated by ≈1.3035 give the workbook's 2025 figures ($282.86 / $118.62 / $13.04 / $87.53); surgery was replaced with an HCUP episode cost rather than inflated. **Two fixes required:** name and cite the inflation index, and correct the Treg arm, which is currently charged un-inflated 2017 health-state costs.
 *Would change if:* a co-author can identify a different index actually used, in which case document that one.
+*Recorded 2026-08-04 (E. Stone):* **2025 USD throughout — adopted as recommended**, per the reconciliation already resolved in §8. The two required fixes (name/cite the inflation index; correct the Treg arm's un-inflated 2017 health-state costs) carry forward as implementation tasks for the costs/utilities module (`R/04_costs_utilities.R`), not open decisions. Final.
 
-**☐ Decision 6 — Population and horizon for monetised EVPI/EVPPI.**
+**☑ Decision 6 — Population and horizon for monetised EVPI/EVPPI.**
 *Recommendation:* **Incident plus prevalent eligible US moderate-to-severe CD population, over a 10-year decision horizon, discounted at 3%; reported separately for the biologic-naïve-eligible and refractory-eligible denominators.**
 *Rationale:* prevalence (≈1.011 million with CD; 305 per 100,000) and IBD incidence (10.9 per 100,000 person-years) are sourced from Lewis et al. 2023, but the moderate-to-severe and treatment-line fractions are not yet sourced and must not be assumed. A 10-year horizon reflects the plausible interval to a real adoption decision. *Would change if:* a co-author prefers a shorter horizon on the grounds that the modality will be superseded faster — run it as a scenario either way.
+*Recorded 2026-08-04 (E. Stone), provisional pending full co-author sign-off:* **10-year horizon at 3% discount, incident + prevalent eligible population — adopted as recommended.** 5- and 15-year horizons to be run as scenarios per the original recommendation. Moderate-to-severe and treatment-line fractions still require sourcing before this can be monetised (not resolved by this decision).
 
 **One further item for the record, not a decision but a disclosure:** agree now how LLM assistance in model development, code or drafting will be described in the Methods section, per the journal's authorship policy.
 

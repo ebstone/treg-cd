@@ -1,0 +1,14 @@
+"therapy","method","cycle_weeks","confidence","to_moderate_severe","to_moderate_severe_responder","to_mild","to_remission","note","row_sum_check"
+"ADA","nested_hazard",2,"direct",0.707106781186548,0.077492261767762,0.077492261767762,0.137908695277928,"",1
+"ADA","response_hazard_only",2,"direct",0.707106781186548,0.0410050506338833,0.0410050506338833,0.210883117545686,"",1
+"ADA","nested_hazard",8,"direct",0.25,0.0294,0.0294,0.6912,"",1
+"ADA","response_hazard_only",8,"direct",0.25,0.105,0.105,0.54,"",1
+"IFX","indirect_adjustment",2,"indirect_low_confidence",0.848528137423857,0.0203335828322214,0.0203335828322214,0.1108046969117,"Derived from ADA endpoint via IFX Induction Responder/Remission Adjustment Ratios and IFX:ADA Efficacy Ratio; assumed applied at ADA's week-4 timepoint. Adjustment-ratio semantics are not documented in data/raw/ (Aliyev Appendix S2 not present in this repository) — treat as a starting point for co-author review, not a validated re-derivation.",1
+"IFX","indirect_adjustment",8,"indirect_low_confidence",0.5184,0.064649984,0.064649984,0.352300032,"Derived from ADA endpoint via IFX Induction Responder/Remission Adjustment Ratios and IFX:ADA Efficacy Ratio; assumed applied at ADA's week-4 timepoint. Adjustment-ratio semantics are not documented in data/raw/ (Aliyev Appendix S2 not present in this repository) — treat as a starting point for co-author review, not a validated re-derivation.",1
+"IFX","manuscript_current",NA,"reference",0.756,0.0208,0.0208,0.203,"Current value in data/raw/manuscript_supplement1_induction_transition_probabilities.csv",1.0006
+"TREG","manuscript_current",NA,"reference",0.3368,0.0708,0.10689,0.4855,"Current value in data/raw/manuscript_supplement1_induction_transition_probabilities.csv",0.99999
+"UST","nested_hazard",2,"direct",0.760590492152278,0.0859366934620361,0.0859366934620361,0.0675361209236496,"",1
+"UST","response_hazard_only",2,"direct",0.760590492152278,0.0442907589518285,0.0442907589518285,0.150827989944065,"",1
+"UST","nested_hazard",8,"direct",0.334659816547002,0.0883654967830473,0.0883654967830473,0.488609189886903,"",1
+"UST","response_hazard_only",8,"direct",0.334659816547002,0.123087933938805,0.123087933938805,0.419164315575389,"",1
+"UST","manuscript_current",NA,"reference",0.791,0.0377,0.0377,0.133,"Current value in data/raw/manuscript_supplement1_induction_transition_probabilities.csv",0.9994

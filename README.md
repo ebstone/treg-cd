@@ -13,9 +13,11 @@ rationale, model design and open decisions.
 
 ## Status
 
-Pre-code. The repository currently holds the source data pull and the analysis plan; the R
-engine described below has not yet been written (Gate 0/1 in `docs/analysis_plan.md` §14 have
-not closed — six co-author decisions in §15 are still open).
+Gate 0 closed 2026-08-04 (`docs/analysis_plan.md` §15 — Decisions 1, 4, 5 final; Decisions 2, 3,
+6 recorded provisionally pending full co-author sign-off). Gate 1 (repository foundations, DEALE
+re-derivation of transition probabilities, `R/00_derive_transition_probs.R`) is in progress. The
+Gate 2 engine (decision tree, Markov engine, cure module, costs/utilities) has not been written
+yet.
 
 ## Repository structure
 

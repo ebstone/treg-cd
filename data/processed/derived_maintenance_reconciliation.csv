@@ -1,0 +1,3 @@
+"therapy","from_state","to_state","trial_endpoint","trial_endpoint_value","trial_endpoint_week","derived_probability_per_8wk_cycle","model_probability_per_8wk_cycle","abs_diff"
+"UST","Remission","Remission","UST Week 44 Remission Probability in Patients in Remission at Baseline",0.67,44,0.929773656078299,0.933640083533929,0.00386642745562937
+"CT","Remission","Remission","CT Week 44 Remission Probability in Patients in Remission at Baseline",0.46,44,0.868326873675124,0.882565657060834,0.0142387833857104
