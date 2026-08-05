@@ -122,6 +122,26 @@ raw parameters diluted into the same 2 components can lose more signal than fewe
 at full resolution) — true EVPPI is monotone in the subset, this approximation isn't guaranteed to
 be. 15 new tests (93 passing total).
 
+`R/08_ejp.R` (first pass, 2026-08-05): deterministic and probabilistic economically justifiable
+price (EJP, Aim 1), plus gross margin over COGS. `ejp_deterministic()` solves P\* in closed form
+(analysis_plan.md §9.1: P\* = [C_comp + λ(Q_treg − Q_comp) − C_treg,non-drug] / D̄, D̄ = 1 under the
+single-dose base case) rather than by root-finding — Treg's total cost is exactly linear in price,
+so C_treg,non-drug is just `run_treg_arm_lifetime()` called at `price_usd = 0`. `ejp_frontier()`
+sweeps this over a π grid; it and `R/05_deterministic_results.R`'s `headroom_frontier()` trace the
+same (π, price) indifference curve from opposite directions, and round-trip through each other
+exactly — the test suite's strongest check, and the one that caught a real bug during development
+(an early version used `non_drug_cost` instead of `total_cost` for C_treg,non-drug, silently
+dropping the $57.90 administration fee that `treg_price_dependent_dose_cost()` always adds
+regardless of price — every P\* was off by exactly that amount until the round-trip test exposed
+it). `ejp_probabilistic()` solves the same closed form per PSA draw as pure post-hoc algebra over
+`R/06_psa.R`'s existing output — no new Markov simulation — reporting the median/95% CI of the
+P\*_k density; `ejp_p50()` independently computes the distinct P_50 quantity analysis_plan.md §9.1
+asks for (the price at which 50% of draws are still cost-effective, from the empirical survival
+function, not from `median()`), since the two are only guaranteed to coincide under symmetry.
+`gross_margin_over_cogs()` implements the §9.1 companion figure — (P\* − COGS)/P\*, COGS read from
+`model_tenham_derived_treg_dose_cost.csv`'s own line — carrying forward the plan's explicit scope
+limit that this is not a manufacturer-profitability claim. 10 new tests (103 passing total).
+
 **Market-comparator context added 2026-08-05** (not a model parameter, not part of any Gate):
 `data/raw/market_comparator_cell_therapy_prices.csv` records two real allogeneic-cell-therapy
 prices — Ryoncil ($194,000/infusion, Mesoblast's FDA-approved MSC therapy) and
