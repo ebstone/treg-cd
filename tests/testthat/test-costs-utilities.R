@@ -111,3 +111,149 @@ test_that("attach_treg_costs_utilities integrates cleanly against a real, small 
   expect_true(all(res$non_drug_cost_by_cycle >= 0))
   expect_true(sum(res$qalys_by_cycle) < 60 * 2 / 52)
 })
+
+# ---- UST/IFX drug-cost layer (added 2026-08-04) ------------------------------------------------
+
+test_that("load_dosing_schedule and load_drug_prices read the real sourced files without error", {
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  expect_setequal(schedule$therapy, c("UST", "IFX"))
+  expect_equal(prices$ust_induction_usd_per_mg, 12.808)
+  expect_equal(prices$ust_maintenance_usd_per_mg, 155.883)
+  expect_equal(prices$ifx_usd_per_mg, 3.109)
+  expect_equal(prices$iv_administration_usd, 57.9)
+})
+
+test_that("ust_induction_dose_mg picks the correct FDA weight tier, including exact boundaries", {
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  expect_equal(ust_induction_dose_mg(50, schedule), 260)
+  expect_equal(ust_induction_dose_mg(55, schedule), 260)   # boundary: "<=55kg" tier
+  expect_equal(ust_induction_dose_mg(55.01, schedule), 390) # just over -> next tier
+  expect_equal(ust_induction_dose_mg(71, schedule), 390)    # this project's assumed weight
+  expect_equal(ust_induction_dose_mg(85, schedule), 390)    # boundary: "<=85kg" tier
+  expect_equal(ust_induction_dose_mg(85.01, schedule), 520)
+  expect_equal(ust_induction_dose_mg(150, schedule), 520)
+})
+
+test_that("ifx_dose_mg rounds up to the nearest whole 100mg vial, never down", {
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  expect_equal(ifx_dose_mg(20, schedule), 100)   # 20*5=100, exact -> no waste
+  expect_equal(ifx_dose_mg(71, schedule), 400)   # 71*5=355 -> rounds up to 400, not down to 300
+  expect_equal(ifx_dose_mg(21, schedule), 200)   # 21*5=105 -> rounds up to 200
+})
+
+test_that("induction_drug_cost matches a hand-computed UST and IFX example at the assumed weight", {
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+
+  ust_cost <- induction_drug_cost("UST", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+  expect_equal(ust_cost, 390 * prices$ust_induction_usd_per_mg + prices$iv_administration_usd)
+
+  ifx_cost <- induction_drug_cost("IFX", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+  # 71kg -> 400mg per dose (vial-rounded), 3 doses, each with its own administration fee.
+  expect_equal(ifx_cost, 3 * (400 * prices$ifx_usd_per_mg + prices$iv_administration_usd))
+})
+
+test_that("maintenance_drug_cost_by_cycle charges only on dose cycles (4, 8, 12, ...), UST has no admin fee", {
+  states <- MAINTENANCE_STATES
+  on_biologic <- matrix(0, nrow = 13, ncol = length(states), dimnames = list(NULL, states))
+  on_biologic[, "Remission"] <- 1  # everyone on-biologic, in Remission, for all 13 cycles (0..12)
+
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+
+  res <- maintenance_drug_cost_by_cycle(on_biologic, "UST", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+  expected_per_dose <- 90 * prices$ust_maintenance_usd_per_mg  # SC, no admin fee
+  is_dose_cycle <- (0:12) %in% c(4, 8, 12)
+  expect_equal(res, ifelse(is_dose_cycle, expected_per_dose, 0))
+
+  res_ifx <- maintenance_drug_cost_by_cycle(on_biologic, "IFX", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+  expected_per_dose_ifx <- 400 * prices$ifx_usd_per_mg + prices$iv_administration_usd
+  expect_equal(res_ifx, ifelse(is_dose_cycle, expected_per_dose_ifx, 0))
+})
+
+test_that("maintenance_drug_cost_by_cycle stops charging once on_biologic mass has left (cap/switch)", {
+  states <- MAINTENANCE_STATES
+  on_biologic <- matrix(0, nrow = 9, ncol = length(states), dimnames = list(NULL, states))
+  on_biologic[1:5, "Remission"] <- 1  # cycles 0-4 on biologic
+  on_biologic[6:9, "Remission"] <- 0  # cycles 5-8: switched away (cap or CT-switch), mass = 0
+
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  res <- maintenance_drug_cost_by_cycle(on_biologic, "UST", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+
+  # Only cycle 4 is both a dose cycle AND has mass still on the biologic; cycle 8 would also be a
+  # dose cycle but mass is already 0 there.
+  expect_equal(res, c(0, 0, 0, 0, 90 * prices$ust_maintenance_usd_per_mg, 0, 0, 0, 0))
+})
+
+test_that("attach_maintenance_costs_utilities: passing therapy activates drug_cost_by_cycle correctly", {
+  states <- c("Remission", "Death")
+  n <- 9
+  on_biologic <- matrix(0, nrow = n, ncol = 2, dimnames = list(NULL, states))
+  on_biologic[, "Remission"] <- 1
+  on_ct <- matrix(0, nrow = n, ncol = 2, dimnames = list(NULL, states))
+  arm_result <- list(on_biologic = on_biologic, on_ct = on_ct)
+  utilities <- c(Remission = 0.9, Death = 0)
+  monitoring_costs <- c(Remission = 20, Death = 0)
+
+  # therapy = NULL (default): drug_cost_by_cycle is all zero, total = non_drug.
+  res_none <- attach_maintenance_costs_utilities(arm_result, utilities, monitoring_costs, annual_rate = 0)
+  expect_equal(res_none$drug_cost_by_cycle, rep(0, n))
+  expect_equal(res_none$total_cost_by_cycle, res_none$non_drug_cost_by_cycle)
+
+  # therapy = "UST": drug_cost_by_cycle picks up the maintenance dosing schedule.
+  # Only need a fake schedule/prices here to keep the test hand-computable and independent of the
+  # real sourced files' exact numbers (those are already checked by the loader tests above).
+  fake_schedule <- data.frame(
+    therapy = "UST", phase = "Maintenance", dose_amount = 90,
+    first_maintenance_cycle_native_2wk = 2, maintenance_interval_cycles_native_2wk = 2,
+    stringsAsFactors = FALSE
+  )
+  fake_prices <- list(ust_maintenance_usd_per_mg = 1)  # $1/mg -> per-dose cost = $90, easy to check
+  res_ust <- attach_maintenance_costs_utilities(
+    arm_result, utilities, monitoring_costs, annual_rate = 0,
+    therapy = "UST", weight_kg = 71, schedule = fake_schedule, prices = fake_prices
+  )
+  is_dose_cycle <- (0:(n - 1)) %in% c(2, 4, 6, 8)
+  expect_equal(res_ust$drug_cost_by_cycle, ifelse(is_dose_cycle, 90, 0))
+  expect_equal(res_ust$total_cost_by_cycle, res_ust$non_drug_cost_by_cycle + res_ust$drug_cost_by_cycle)
+})
+
+test_that("attach_treg_costs_utilities never charges UST's drug cost to the non-cured track", {
+  # Real integration check: even though Treg's non-cured portion literally reuses UST's own
+  # maintenance matrix (R/03_cure_fraction_module.R), attach_treg_costs_utilities() must never
+  # produce a nonzero drug_cost_by_cycle -- confirmed with E. Stone, 2026-08-04 (module header).
+  maintenance <- load_published_maintenance(repo_root_relative("data", "raw"))
+  ust_m <- build_transition_matrix(maintenance[maintenance$therapy == "UST", ], MAINTENANCE_STATES)
+  ct_m <- build_transition_matrix(maintenance[maintenance$therapy == "CT", ], MAINTENANCE_STATES)
+  init <- stats::setNames(rep(0, length(MAINTENANCE_STATES)), MAINTENANCE_STATES)
+  init["Remission"] <- 1
+
+  arm <- run_treg_arm(ust_m, ct_m, init, rep(0, length(MAINTENANCE_STATES)), n_cycles = 60,
+                       pi_sdr = 0.3, relapse_hazard_annual = 0.05, landmark_cycle = 28, cap_cycle = 52)
+  utilities <- load_health_state_utilities(repo_root_relative("data", "processed"))
+  monitoring_costs <- health_state_monitoring_costs()
+  res <- attach_treg_costs_utilities(arm, utilities, monitoring_costs)
+
+  expect_equal(res$drug_cost_by_cycle, rep(0, 61))
+  expect_equal(res$total_cost_by_cycle, res$non_drug_cost_by_cycle)
+})
+
+test_that("summarise_arm adds a one-time induction cost undiscounted, on top of the per-cycle sums", {
+  attached <- list(
+    qalys_by_cycle = c(1, 2, 3),
+    non_drug_cost_by_cycle = c(10, 10, 10),
+    drug_cost_by_cycle = c(5, 0, 5),
+    total_cost_by_cycle = c(15, 10, 15)
+  )
+  res <- summarise_arm(attached, induction_cost = 1000)
+  expect_equal(res$qalys, 6)
+  expect_equal(res$non_drug_cost, 30)
+  expect_equal(res$drug_cost, 10 + 1000)
+  expect_equal(res$total_cost, 40 + 1000)
+
+  res_no_induction <- summarise_arm(attached)
+  expect_equal(res_no_induction$drug_cost, 10)
+  expect_equal(res_no_induction$total_cost, 40)
+})

@@ -24,12 +24,14 @@ occupancy vectors), `R/02_markov_engine.R` (cohort Markov core, with the M-S-to-
 mixture-cure extension: week-56 landmark split, Sustained Deep Remission state, relapse hazard,
 cap-aware relapse re-entry) are built, wired together, and tested end to end (induction ->
 maintenance [-> cure branching for Treg], cohort-conserving over a full lifetime horizon).
-Cost/utility attachment (`R/04_costs_utilities.R`) first pass landed 2026-08-04: utility
-attachment and the arm-independent per-cycle health-state monitoring cost are implemented and
-tested. Drug acquisition/administration costs (UST/IFX/ADA dosing, Treg's one-time/two-dose
-acquisition cost) are not yet implemented — blocked on a cited dose-size + frequency source not
-yet in `data/raw/` (see the module's header comment and `docs/analysis_plan.md` §7.1 items
-12–15). Every cost this module currently returns is non-drug cost only.
+Cost/utility attachment (`R/04_costs_utilities.R`): utility attachment and the arm-independent
+per-cycle health-state monitoring cost landed 2026-08-04 (first pass). UST/IFX drug
+acquisition + administration costs (induction and maintenance, both dose size and cycle-aligned
+frequency, sourced from the STELARA/REMICADE Prescribing Information —
+`data/raw/ust_ifx_dosing_schedule.csv`) landed 2026-08-04 (second pass), deliberately excluding
+Treg's non-cured track (efficacy-equivalent to UST, but never actually charged UST's drug cost —
+see the module's header comment). ADA dosing and Treg's own one-time/two-dose acquisition cost
+are still not sourced/wired in.
 
 ## Repository structure
 
