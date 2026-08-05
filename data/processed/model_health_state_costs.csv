@@ -1,4 +1,4 @@
-therapy,health_state,cost_per_8wk_cycle_usd_2025,variable_name
+therapy,health_state,cost_per_2wk_cycle_usd_2025,variable_name
 TREG,Mod/Sev,284,costs_treg_MS
 TREG,Mod/Sev Resp,217,costs_treg_MSR
 TREG,Mild,91,costs_treg_mild
