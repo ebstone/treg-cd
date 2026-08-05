@@ -103,7 +103,7 @@ Stated as falsifiable aims. Each primary aim maps to one primary endpoint.
 | Perspective | US formal healthcare sector | Keep; **add societal scenario** | US Second Panel recommends reporting both. The Manceur et al. (2020) absenteeism/disability data are already extracted in the workbook's *Cell therapy costs* sheet, so the marginal effort is low, and productivity effects materially favour a durable therapy |
 | Time horizon | 40 × 8-week cycles = 6.15 years | **Lifetime**, with 6.15-year and 10-year scenarios | A cure model with a 6-year horizon truncates precisely the benefit the paper is about. Requires US life tables and an explicit extrapolation assumption beyond trial-supported data — **implemented 2026-08-05, see below** |
 | Cycle length | 8 weeks | Keep | Matches q8w maintenance dosing for both UST and IFX; changing it would require re-deriving every transition probability |
-| Half-cycle correction | None | **Apply** (life-table or Simpson's 1/3) | CHEERS 2022 item 17; trivial to implement in code |
+| Half-cycle correction | None | **Apply** (life-table or Simpson's 1/3) | CHEERS 2022 item 17; trivial to implement in code — **implemented 2026-08-05**, `R/04_costs_utilities.R`'s `half_cycle_weights()` (trapezoidal method); see A12, `docs/model_audit_v6.md`, for detail |
 | Discount rate | 3% costs and QALYs | Keep 3%; scenarios at 0%, 1.5% and 5% | 1.5% is worth including explicitly given the live methodological debate about discounting one-time potentially curative therapies |
 | WTP threshold | $150,000/QALY | Report $50k, $100k, $150k | $150,000 alone reads as the most permissive choice available |
 | Currency / price year | 2025 USD (partially applied) | **2025 USD throughout**, index documented | See Section 8 |

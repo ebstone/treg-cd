@@ -43,6 +43,12 @@
 #      -- no new simulation. Reports the ranking-is-stable-but-level-is-prior-dependent finding the
 #      memo asks for.
 #
+# Half-cycle correction (A12, docs/model_audit_v6.md; analysis_plan.md sec 4.1) also landed
+# 2026-08-05, same day as steps 7-8 -- but needed NO change to this script at all:
+# half_cycle_correction = TRUE is R/04's new default, inherited automatically by every step above
+# (none of them override it), so every number this script produces already includes the
+# correction with no separate step or output table of its own.
+#
 # Explicitly OUT of scope for this pass, same as prior module-level passes flagged in their own
 # headers: any figure (README: ggplot2-vs-base-graphics plotting decision not yet made -- tables
 # only here), the structural scenarios S1-S12 (analysis/run_scenario_analyses.R, still a stub),

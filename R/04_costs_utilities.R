@@ -529,24 +529,55 @@ discount_factors_for_trace <- function(n_cycles, cycle_weeks = 2, annual_rate = 
   vapply(0:n_cycles, discount_factor, numeric(1), cycle_weeks = cycle_weeks, annual_rate = annual_rate)
 }
 
+#' Half-cycle correction weights (analysis_plan.md §4.1: "Apply (life-table or Simpson's 1/3)" --
+#' CHEERS 2022 item 17; closes A12, docs/model_audit_v6.md: "Cohort state occupancy is applied at
+#' cycle boundaries with no correction"). The standard trapezoidal-rule correction for a trace of
+#' `n_cycles` + 1 timepoints (rows 0..n_cycles, i.e. `n_cycles` actual cycle-length intervals
+#' between them): true within-cycle occupancy is continuous and unobserved, so each interval's
+#' contribution is approximated by the straight-line average of its two bounding timepoints,
+#' (occ[i-1] + occ[i]) / 2 for i = 1..n_cycles. Summed algebraically that is
+#' 0.5*occ[0] + occ[1] + ... + occ[n_cycles-1] + 0.5*occ[n_cycles] -- i.e. every INTERIOR
+#' timepoint at full weight, both ENDPOINTS (baseline and terminal occupancy) at half weight.
+#' `n_cycles == 0` (a single row, no interval elapsed at all) returns weight 1 -- there is nothing
+#' to correct.
+half_cycle_weights <- function(n_cycles) {
+  stopifnot(n_cycles >= 0)
+  if (n_cycles == 0) return(1)
+  c(0.5, rep(1, n_cycles - 1), 0.5)
+}
+
 #' Discounted per-cycle QALYs for a full occupancy trace (rows = cycles 0..n, columns = states).
 #' Undiscounted per-cycle utility mass is trace %*% utilities[states] (matches R/02's own
-#' trace[t, ] %*% m style), multiplied by cycle length in years and the cycle's discount factor.
-#' Half-cycle correction (A12, docs/model_audit_v6.md) is a known, not-yet-implemented gap -- not
-#' silently applied here.
-trace_qalys <- function(trace, utilities, cycle_weeks = 2, annual_rate = 0.03) {
+#' trace[t, ] %*% m style), multiplied by cycle length in years, the half-cycle correction weight
+#' for that row, and the cycle's discount factor.
+#'
+#' `half_cycle_correction = TRUE` (default, closing A12 as of 2026-08-05 -- see
+#' half_cycle_weights()): every result this function feeds now applies it by default, matching
+#' analysis_plan.md §4.1's "Apply" recommendation. Pass `FALSE` to reproduce the exact
+#' pre-2026-08-05 uncorrected behaviour (e.g. for a comparability scenario, or a hand-computed
+#' test that wants the raw per-row mass) -- every prior deterministic/probabilistic result in this
+#' repository was produced with the equivalent of `FALSE`, and is superseded by the `TRUE` default
+#' now that it exists (README.md's Status section).
+trace_qalys <- function(trace, utilities, cycle_weeks = 2, annual_rate = 0.03,
+                         half_cycle_correction = TRUE) {
   states <- colnames(trace)
   stopifnot(!is.null(states), all(states %in% names(utilities)))
   n_cycles <- nrow(trace) - 1
   utility_mass <- as.numeric(trace %*% utilities[states])
+  if (half_cycle_correction) utility_mass <- utility_mass * half_cycle_weights(n_cycles)
   utility_mass * cycle_weeks / 52 * discount_factors_for_trace(n_cycles, cycle_weeks, annual_rate)
 }
 
 #' Discounted per-cycle non-drug cost for a full occupancy trace. `add_ct_drug_cost = TRUE` adds
 #' the flat CT-track drug cost (see module header) to every living state's occupancy each cycle --
 #' pass this for a CT-track trace (e.g. run_maintenance_arm()'s on_ct), not a biologic-track one.
+#'
+#' `half_cycle_correction` -- see trace_qalys()'s docstring; same default, same weights, same
+#' supersession note. Applied to the COMBINED cost mass (monitoring cost plus, if requested, the
+#' CT drug cost) so both components of a cycle's cost get the same within-cycle treatment, not
+#' just the state-occupancy-driven part.
 trace_costs <- function(trace, monitoring_costs, cycle_weeks = 2, annual_rate = 0.03,
-                         add_ct_drug_cost = FALSE) {
+                         add_ct_drug_cost = FALSE, half_cycle_correction = TRUE) {
   states <- colnames(trace)
   stopifnot(!is.null(states), all(states %in% names(monitoring_costs)))
   n_cycles <- nrow(trace) - 1
@@ -555,6 +586,7 @@ trace_costs <- function(trace, monitoring_costs, cycle_weeks = 2, annual_rate = 
     living <- setdiff(states, "Death")
     cost_mass <- cost_mass + rowSums(trace[, living, drop = FALSE]) * ct_drug_cost()
   }
+  if (half_cycle_correction) cost_mass <- cost_mass * half_cycle_weights(n_cycles)
   cost_mass * discount_factors_for_trace(n_cycles, cycle_weeks, annual_rate)
 }
 
@@ -572,16 +604,26 @@ trace_costs <- function(trace, monitoring_costs, cycle_weeks = 2, annual_rate = 
 #' CT-only arms (CT's drug cost is already the separate ct_drug_cost() layer on on_ct, not this
 #' one) and for Treg's non-cured track (see attach_treg_costs_utilities() -- never passes
 #' `therapy` here, by design, not by omission).
+#'
+#' `half_cycle_correction` (default TRUE, A12/analysis_plan.md §4.1) -- passed through to the
+#' non-drug (state-occupancy-driven) cost and QALY calls only, NOT to `drug_cost_by_cycle` below:
+#' a maintenance dose is a discrete, punctate event that either happens in a given cycle or
+#' doesn't (`maintenance_drug_cost_by_cycle()`'s own `is_dose_cycle` mask), not a continuously
+#' accruing quantity like time spent occupying a health state -- the correction exists to
+#' approximate the latter's within-cycle path, and would misapply to the former (e.g. halving the
+#' cost of a dose actually given at cycle 0 or the final cycle, which isn't the mechanism A12
+#' describes at all).
 attach_maintenance_costs_utilities <- function(arm_result, utilities, monitoring_costs,
                                                 cycle_weeks = 2, annual_rate = 0.03,
                                                 therapy = NULL, weight_kg = NULL,
-                                                schedule = NULL, prices = NULL) {
+                                                schedule = NULL, prices = NULL,
+                                                half_cycle_correction = TRUE) {
   states_trace <- arm_result$on_biologic + arm_result$on_ct
   non_drug_cost_by_cycle <- (
     trace_costs(arm_result$on_biologic, monitoring_costs, cycle_weeks, annual_rate,
-                add_ct_drug_cost = FALSE) +
+                add_ct_drug_cost = FALSE, half_cycle_correction = half_cycle_correction) +
     trace_costs(arm_result$on_ct, monitoring_costs, cycle_weeks, annual_rate,
-                add_ct_drug_cost = TRUE)
+                add_ct_drug_cost = TRUE, half_cycle_correction = half_cycle_correction)
   )
 
   n_cycles <- nrow(arm_result$on_biologic) - 1
@@ -596,7 +638,8 @@ attach_maintenance_costs_utilities <- function(arm_result, utilities, monitoring
   }
 
   list(
-    qalys_by_cycle = trace_qalys(states_trace, utilities, cycle_weeks, annual_rate),
+    qalys_by_cycle = trace_qalys(states_trace, utilities, cycle_weeks, annual_rate,
+                                  half_cycle_correction = half_cycle_correction),
     non_drug_cost_by_cycle = non_drug_cost_by_cycle,
     drug_cost_by_cycle = drug_cost_by_cycle,
     total_cost_by_cycle = non_drug_cost_by_cycle + drug_cost_by_cycle
@@ -611,18 +654,26 @@ attach_maintenance_costs_utilities <- function(arm_result, utilities, monitoring
 #' project's native 2-week cycle) -- explicitly "recommend...flag as assumption" in the plan text
 #' (§6.2), not an independently sourced figure. `drug_cost_by_cycle` is always all-zero: SDR
 #' patients are off therapy by definition, not an omission to fill in later.
+#'
+#' `half_cycle_correction` (default TRUE) -- SDR occupancy is exactly the same kind of
+#' continuously-accruing quantity as any other health state's (patients spend time IN it, same as
+#' Remission or Mild), so it gets the identical trapezoidal treatment as
+#' trace_qalys()/trace_costs() apply elsewhere, via the same half_cycle_weights() helper -- not a
+#' separate rule invented for this function.
 attach_sdr_costs_utilities <- function(on_sdr, utilities, monitoring_costs, cycle_weeks = 2,
-                                        annual_rate = 0.03, halve_after_cycle = 52) {
+                                        annual_rate = 0.03, halve_after_cycle = 52,
+                                        half_cycle_correction = TRUE) {
   n_cycles <- length(on_sdr) - 1
   cycles <- 0:n_cycles
   discount <- discount_factors_for_trace(n_cycles, cycle_weeks, annual_rate)
+  weights <- if (half_cycle_correction) half_cycle_weights(n_cycles) else 1
   remission_utility <- utilities[["Remission"]]
   remission_cost <- monitoring_costs[["Remission"]]
   cost_rate <- ifelse(cycles > halve_after_cycle, remission_cost / 2, remission_cost)
-  non_drug_cost_by_cycle <- on_sdr * cost_rate * discount
+  non_drug_cost_by_cycle <- on_sdr * cost_rate * weights * discount
 
   list(
-    qalys_by_cycle = on_sdr * remission_utility * cycle_weeks / 52 * discount,
+    qalys_by_cycle = on_sdr * remission_utility * cycle_weeks / 52 * weights * discount,
     non_drug_cost_by_cycle = non_drug_cost_by_cycle,
     drug_cost_by_cycle = rep(0, n_cycles + 1),
     total_cost_by_cycle = non_drug_cost_by_cycle
@@ -638,14 +689,20 @@ attach_sdr_costs_utilities <- function(on_sdr, utilities, monitoring_costs, cycl
 #' Deliberately never passes `therapy` to the Markov portion below -- see module header ("Not
 #' applied to Treg's non-cured track"): non-cured Treg patients are efficacy-equivalent to UST
 #' but were never actually given ustekinumab, so they are not charged its drug cost.
+#'
+#' `half_cycle_correction` (default TRUE) -- forwarded unchanged to both the Markov portion and
+#' the SDR portion, so the whole arm gets one consistent within-cycle treatment.
 attach_treg_costs_utilities <- function(arm_result, utilities, monitoring_costs, cycle_weeks = 2,
-                                         annual_rate = 0.03, halve_after_cycle = 52) {
+                                         annual_rate = 0.03, halve_after_cycle = 52,
+                                         half_cycle_correction = TRUE) {
   markov <- attach_maintenance_costs_utilities(
     list(on_biologic = arm_result$on_biologic, on_ct = arm_result$on_ct),
-    utilities, monitoring_costs, cycle_weeks, annual_rate
+    utilities, monitoring_costs, cycle_weeks, annual_rate,
+    half_cycle_correction = half_cycle_correction
   )
   sdr <- attach_sdr_costs_utilities(
-    arm_result$on_sdr, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle
+    arm_result$on_sdr, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle,
+    half_cycle_correction = half_cycle_correction
   )
   list(
     qalys_by_cycle = markov$qalys_by_cycle + sdr$qalys_by_cycle,

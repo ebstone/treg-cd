@@ -36,36 +36,84 @@ test_that("load_health_state_utilities maps the workbook's abbreviated state nam
   expect_gt(utilities[["Mild"]], utilities[["Moderate-Severe"]])
 })
 
-test_that("trace_qalys reproduces a hand-computed 2-state, 2-cycle example", {
+test_that("trace_qalys reproduces a hand-computed 2-state, 2-cycle example (half_cycle_correction = FALSE, the raw per-row formula)", {
   states <- c("A", "B")
   trace <- matrix(c(1, 0, 0.5, 0.5, 0.25, 0.75), nrow = 3, byrow = TRUE, dimnames = list(NULL, states))
   utilities <- c(A = 1, B = 0.5)
 
-  qalys <- trace_qalys(trace, utilities, cycle_weeks = 2, annual_rate = 0)
+  qalys <- trace_qalys(trace, utilities, cycle_weeks = 2, annual_rate = 0, half_cycle_correction = FALSE)
   # 0% discount rate -> discount_factor is always 1, so this is just utility-mass x cycle-years.
   expected_utility_mass <- c(1, 0.5 * 1 + 0.5 * 0.5, 0.25 * 1 + 0.75 * 0.5)
   expect_equal(qalys, expected_utility_mass * 2 / 52, tolerance = 1e-9)
 })
 
-test_that("trace_costs applies the CT drug cost only when add_ct_drug_cost = TRUE", {
+test_that("trace_costs applies the CT drug cost only when add_ct_drug_cost = TRUE (half_cycle_correction = FALSE, the raw per-row formula)", {
   states <- c("Mild", "Death")
   trace <- matrix(c(1, 0, 1, 0), nrow = 2, byrow = TRUE, dimnames = list(NULL, states))
   monitoring_costs <- c(Mild = 100, Death = 0)
 
-  no_drug <- trace_costs(trace, monitoring_costs, annual_rate = 0, add_ct_drug_cost = FALSE)
-  with_drug <- trace_costs(trace, monitoring_costs, annual_rate = 0, add_ct_drug_cost = TRUE)
+  no_drug <- trace_costs(trace, monitoring_costs, annual_rate = 0, add_ct_drug_cost = FALSE, half_cycle_correction = FALSE)
+  with_drug <- trace_costs(trace, monitoring_costs, annual_rate = 0, add_ct_drug_cost = TRUE, half_cycle_correction = FALSE)
 
   expect_equal(no_drug, c(100, 100))
   expect_equal(with_drug, c(100, 100) + ct_drug_cost())
 })
 
-test_that("attach_sdr_costs_utilities halves the Remission monitoring cost after the cap boundary", {
+# ---- Half-cycle correction (A12, docs/model_audit_v6.md; analysis_plan.md sec 4.1) --------------
+
+test_that("half_cycle_weights: endpoints at 0.5, interior at 1, and the n_cycles = 0 edge case", {
+  expect_equal(half_cycle_weights(0), 1)
+  expect_equal(half_cycle_weights(1), c(0.5, 0.5))
+  expect_equal(half_cycle_weights(2), c(0.5, 1, 0.5))
+  expect_equal(half_cycle_weights(4), c(0.5, 1, 1, 1, 0.5))
+  expect_error(half_cycle_weights(-1))
+})
+
+test_that("trace_qalys's default (half_cycle_correction = TRUE) matches the FALSE path times half_cycle_weights() exactly", {
+  states <- c("A", "B")
+  trace <- matrix(c(1, 0, 0.5, 0.5, 0.25, 0.75, 0, 1), nrow = 4, byrow = TRUE, dimnames = list(NULL, states))
+  utilities <- c(A = 1, B = 0.5)
+
+  raw <- trace_qalys(trace, utilities, cycle_weeks = 2, annual_rate = 0.03, half_cycle_correction = FALSE)
+  corrected <- trace_qalys(trace, utilities, cycle_weeks = 2, annual_rate = 0.03, half_cycle_correction = TRUE)
+  expect_equal(corrected, raw * half_cycle_weights(3))
+  # Endpoints strictly shrink, interior points are unchanged, under a genuinely mixed trace.
+  expect_equal(corrected[1], raw[1] * 0.5)
+  expect_equal(corrected[4], raw[4] * 0.5)
+  expect_equal(corrected[2:3], raw[2:3])
+})
+
+test_that("trace_costs's default (half_cycle_correction = TRUE) matches the FALSE path times half_cycle_weights() exactly, with add_ct_drug_cost on", {
+  states <- c("Mild", "Death")
+  trace <- matrix(c(1, 0, 0.8, 0.2, 0.5, 0.5), nrow = 3, byrow = TRUE, dimnames = list(NULL, states))
+  monitoring_costs <- c(Mild = 100, Death = 0)
+
+  raw <- trace_costs(trace, monitoring_costs, annual_rate = 0.03, add_ct_drug_cost = TRUE, half_cycle_correction = FALSE)
+  corrected <- trace_costs(trace, monitoring_costs, annual_rate = 0.03, add_ct_drug_cost = TRUE, half_cycle_correction = TRUE)
+  expect_equal(corrected, raw * half_cycle_weights(2))
+})
+
+test_that("half-cycle correction strictly lowers total (summed) QALYs and costs for a monotonically declining trace, as expected from discarding half of both endpoints' mass", {
+  # A trace that starts at its highest occupancy/value and decays -- summing with the correction
+  # necessarily loses more from the (larger) first-row weight cut than it gains from the (smaller)
+  # last-row cut, so the corrected total should sit strictly below the uncorrected total whenever
+  # the trace isn't flat.
+  states <- c("A", "B")
+  trace <- matrix(c(1, 0, 0.7, 0.3, 0.4, 0.6, 0.2, 0.8), nrow = 4, byrow = TRUE, dimnames = list(NULL, states))
+  utilities <- c(A = 1, B = 0.2)
+
+  raw_total <- sum(trace_qalys(trace, utilities, annual_rate = 0, half_cycle_correction = FALSE))
+  corrected_total <- sum(trace_qalys(trace, utilities, annual_rate = 0, half_cycle_correction = TRUE))
+  expect_true(corrected_total < raw_total)
+})
+
+test_that("attach_sdr_costs_utilities halves the Remission monitoring cost after the cap boundary (half_cycle_correction = FALSE, isolating the halve_after_cycle mechanic)", {
   on_sdr <- c(1, 1, 1)  # cycles 0, 1, 2; halve_after_cycle = 1 -> cycle 2 is halved
   utilities <- c(Remission = 0.9)
   monitoring_costs <- c(Remission = 20)
 
   res <- attach_sdr_costs_utilities(on_sdr, utilities, monitoring_costs, annual_rate = 0,
-                                     halve_after_cycle = 1)
+                                     halve_after_cycle = 1, half_cycle_correction = FALSE)
 
   expect_equal(res$non_drug_cost_by_cycle, c(20, 20, 10))
   expect_equal(res$qalys_by_cycle, rep(0.9 * 2 / 52, 3))
@@ -73,7 +121,18 @@ test_that("attach_sdr_costs_utilities halves the Remission monitoring cost after
   # cost for SDR, which this test documents as intentional rather than assuming.
 })
 
-test_that("attach_maintenance_costs_utilities: CT-track occupancy gets the drug cost, biologic-track doesn't", {
+test_that("attach_sdr_costs_utilities's default (half_cycle_correction = TRUE) applies half_cycle_weights() on top of the halve_after_cycle rule, not instead of it", {
+  on_sdr <- c(1, 1, 1)  # cycles 0, 1, 2 -> half_cycle_weights(2) = c(0.5, 1, 0.5)
+  utilities <- c(Remission = 0.9)
+  monitoring_costs <- c(Remission = 20)
+
+  res <- attach_sdr_costs_utilities(on_sdr, utilities, monitoring_costs, annual_rate = 0, halve_after_cycle = 1)
+  # Cycle 2's cost is already halved by halve_after_cycle (20 -> 10), THEN half-cycle-weighted (x0.5 -> 5).
+  expect_equal(res$non_drug_cost_by_cycle, c(20 * 0.5, 20, 10 * 0.5))
+  expect_equal(res$qalys_by_cycle, (0.9 * 2 / 52) * c(0.5, 1, 0.5))
+})
+
+test_that("attach_maintenance_costs_utilities: CT-track occupancy gets the drug cost, biologic-track doesn't (half_cycle_correction = FALSE, isolating the CT-vs-biologic attribution)", {
   states <- c("Remission", "Death")
   on_biologic <- matrix(c(1, 0, 1, 0), nrow = 2, byrow = TRUE, dimnames = list(NULL, states))
   on_ct <- matrix(c(0, 0, 0, 0), nrow = 2, byrow = TRUE, dimnames = list(NULL, states))
@@ -81,12 +140,14 @@ test_that("attach_maintenance_costs_utilities: CT-track occupancy gets the drug 
   utilities <- c(Remission = 0.9, Death = 0)
   monitoring_costs <- c(Remission = 20, Death = 0)
 
-  res <- attach_maintenance_costs_utilities(arm_result, utilities, monitoring_costs, annual_rate = 0)
+  res <- attach_maintenance_costs_utilities(arm_result, utilities, monitoring_costs, annual_rate = 0,
+                                             half_cycle_correction = FALSE)
   expect_equal(res$non_drug_cost_by_cycle, c(20, 20))  # no CT drug cost: everyone's on_biologic
 
   # Swap: everyone on CT instead -- now the drug cost should show up.
   arm_result2 <- list(on_biologic = on_ct, on_ct = on_biologic)
-  res2 <- attach_maintenance_costs_utilities(arm_result2, utilities, monitoring_costs, annual_rate = 0)
+  res2 <- attach_maintenance_costs_utilities(arm_result2, utilities, monitoring_costs, annual_rate = 0,
+                                              half_cycle_correction = FALSE)
   expect_equal(res2$non_drug_cost_by_cycle, c(20, 20) + ct_drug_cost())
 })
 

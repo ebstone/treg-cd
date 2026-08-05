@@ -73,9 +73,11 @@
 # ---- Not yet implemented in this pass ------------------------------------------------------------
 #
 # - The full one-way tornado on every Section 7.1 parameter (§10.1) -- most of those parameters
-#   (refractory multipliers, biosimilar re-pricing, half-cycle correction, AE costs) don't have
-#   sourced ranges yet either, so a tornado built now would mostly be placeholder bars. A future
-#   pass should add tornado_one_way() once more of Gate 3's parameterisation work lands.
+#   (refractory multipliers, AE costs) don't have sourced ranges yet either, so a tornado built now
+#   would mostly be placeholder bars. A future pass should add tornado_one_way() once more of
+#   Gate 3's parameterisation work lands. (Half-cycle correction -- implemented 2026-08-05,
+#   R/04_costs_utilities.R's half_cycle_weights() -- isn't a tornado-range input at all, it's a
+#   structural on/off toggle now defaulted on everywhere; dropped from this list accordingly.)
 # - Discount-rate scenarios (0%/1.5%/5%, §4.1) and the societal-perspective scenario -- the plumbing
 #   (annual_rate is already a parameter throughout) supports them; no orchestration wrapper exists
 #   yet to run and report them as named scenarios.
@@ -172,11 +174,17 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 #' run_maintenance_arm_with_mortality() (R/02_markov_engine.R) -- age- and sex-specific
 #' background mortality, sourced from `life_table` (R/utils/life_table.R's load_life_table(),
 #' loaded from `raw_dir` if not supplied).
+#'
+#' `half_cycle_correction = TRUE` (default, A12/analysis_plan.md §4.1) -- forwarded to
+#' attach_maintenance_costs_utilities(); `FALSE` reproduces the exact pre-2026-08-05 uncorrected
+#' behaviour (R/04_costs_utilities.R's trace_qalys()/trace_costs() docstrings), e.g. for a
+#' comparability scenario against results computed before this correction existed.
 run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                          cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE,
                                          cap_cycle = 52, raw_dir = "data/raw", proc_dir = "data/processed",
                                          utilities = NULL, induction_data = NULL, schedule = NULL,
-                                         prices = NULL, baseline_age = NULL, life_table = NULL) {
+                                         prices = NULL, baseline_age = NULL, life_table = NULL,
+                                         half_cycle_correction = TRUE) {
   therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
   stopifnot(all(c(therapy, "CT") %in% names(matrices)))
 
@@ -205,7 +213,8 @@ run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg =
 
   attached <- attach_maintenance_costs_utilities(
     arm, utilities, monitoring_costs, cycle_weeks, annual_rate,
-    therapy = therapy, weight_kg = weight_kg, schedule = schedule, prices = prices
+    therapy = therapy, weight_kg = weight_kg, schedule = schedule, prices = prices,
+    half_cycle_correction = half_cycle_correction
   )
   induction_cost <- induction_drug_cost(therapy, weight_kg, schedule, prices)
 
@@ -252,6 +261,11 @@ treg_price_dependent_dose_cost <- function(price_usd, cyclophosphamide_dose_mg =
 #' background mortality to the pre-landmark UST-equivalent track, the post-landmark non-cured
 #' track, AND the SDR track itself (R/03's own module header on why SDR needed a death exit at
 #' all for a lifetime horizon to be sound).
+#'
+#' `half_cycle_correction = TRUE` (default) -- same meaning as
+#' run_comparator_arm_lifetime()'s equivalent parameter, forwarded to attach_treg_costs_utilities()
+#' (which applies it identically to both the pre-landmark/non-cured Markov portion and the SDR
+#' portion -- R/04's own docstring on that function).
 run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices,
                                    weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                    annual_rate = 0.03, landmark_cycle = 28, cap_cycle = 52,
@@ -259,7 +273,7 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
                                    observation_stay_cost_usd = 0, raw_dir = "data/raw",
                                    proc_dir = "data/processed", utilities = NULL,
                                    induction_data = NULL, prices = NULL, baseline_age = NULL,
-                                   life_table = NULL) {
+                                   life_table = NULL, half_cycle_correction = TRUE) {
   stopifnot(all(c("UST", "CT") %in% names(matrices)))
 
   if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
@@ -284,7 +298,8 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
   if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
   monitoring_costs <- health_state_monitoring_costs()
   attached <- attach_treg_costs_utilities(
-    arm, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle = cap_cycle
+    arm, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle = cap_cycle,
+    half_cycle_correction = half_cycle_correction
   )
 
   if (is.null(prices)) prices <- load_drug_prices(raw_dir)

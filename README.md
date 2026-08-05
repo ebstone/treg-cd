@@ -265,6 +265,29 @@ immediately after the lifetime-horizon work above. Two independent additions:
 (`output/tables/evppi_prior_sensitivity.csv`) computed from the PSA draws already produced in
 section 3/8 — no new PSA run. Full test suite: 461 assertions, 0 failures.
 
+**Half-cycle correction implemented (2026-08-05)**, closing A12 (`docs/model_audit_v6.md`: "Cohort
+state occupancy is applied at cycle boundaries with no correction") — CHEERS 2022 item 17, and
+analysis_plan.md §4.1's own "Apply" recommendation. `R/04_costs_utilities.R`'s new
+`half_cycle_weights()` applies the standard trapezoidal-rule correction to every continuously
+state-occupancy-driven cost/QALY calculation (`trace_qalys()`, `trace_costs()`,
+`attach_sdr_costs_utilities()`'s SDR accrual) — both endpoints of a trace weighted at 0.5, every
+interior timepoint at full weight — but deliberately NOT to one-time or discrete-event costs
+(induction/dose acquisition, a maintenance dose on its specific dosing cycle), which aren't the
+continuously-accruing quantity the correction models. `half_cycle_correction = TRUE` is now the
+default everywhere from `R/04` up through `R/05`'s `run_comparator_arm_lifetime()`/
+`run_treg_arm_lifetime()` — every downstream caller (`R/06` PSA, `R/07` EVPI/EVPPI, `R/08` EJP)
+inherits the correction automatically with no code changes of its own, since none of them override
+the new default. `FALSE` reproduces the exact pre-2026-08-05 figures for comparability. **Every
+deterministic and probabilistic result produced before this fix is superseded** (same class of
+change as A16 and the biosimilar re-pricing) — the shift is small in relative terms but is real
+and one-directional at the per-arm level: since occupancy and utility/cost values are always
+non-negative, halving both endpoints' weight can only ever reduce a trace's summed QALYs/cost
+relative to the uncorrected figure, never raise it (full reasoning: A12's own entry in
+`docs/model_audit_v6.md`). `docs/analysis_plan.md` §4.1 updated. No new test files added -- existing ones extended (new
+`half_cycle_weights()`/corrected-vs-raw checks) and two exact-value tests repointed to
+`half_cycle_correction = FALSE` to keep testing the raw per-cycle formula they were written to
+check. Full test suite: 474 assertions (up from 461), 0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,
