@@ -11,7 +11,10 @@
 # wired in the same day (fourth pass) -- see "UST/IFX/ADA drug acquisition/administration costs"
 # below. Treg's own dose cost sourced and wired in the same day (fifth pass) -- see "Treg's own
 # dose cost" below; NOT fully resolved, see that section for what's still open (cyclophosphamide
-# dose, observation-stay cost). Non-drug-cost outputs from the first pass
+# dose; observation-stay cost PRICE now fully confirmed at $2,672.15, CY2026, directly from CMS's
+# own Addendum A -- wired in as an explicit opt-in `treg_dose_cost()` argument defaulting to 0,
+# since whether a Treg infusion actually qualifies for this billing category is still an open
+# clinical/modelling question, not a pricing one). Non-drug-cost outputs from the first pass
 # ("non_drug_cost_by_cycle" etc.) are kept as separately named fields even now that drug costs
 # exist elsewhere in this module -- don't conflate the two.
 #
@@ -138,14 +141,31 @@
 #    CAR-T lymphodepletion protocol) without flagging it as a proxy, not a citation -- ask
 #    E. Stone/the clinical co-authors first.
 #
-# **Not sourced at all: overnight observation-stay cost**, also named in item 13. CMS's
-# comprehensive-observation payment (C-APC 8011 under OPPS) is a bundled/packaged rate with
-# specific qualifying criteria, not a simple per-night figure, and no confidently current (2025/
-# 2026) rate could be found in this environment -- only a 2021 figure ($2,283.16), which was not
-# used since inflating it without a cited index would be exactly the kind of unsupported number
-# this project's whole methodology exists to avoid. No parameter for this exists in
-# treg_dose_cost() -- a phantom always-zero field would misrepresent this as modelled when it
-# isn't. Flagged here as a real, still-open gap.
+# **Overnight observation-stay cost: PRICE now fully sourced (2026-08-05, against CMS's own**
+# **Addendum A), still NOT wired into the base case -- see why below.** CMS's Comprehensive
+# Observation Services payment (C-APC 8011 under OPPS) is a bundled/packaged rate with specific
+# qualifying criteria (>=8 hours of G0378, no status-T procedure same/next day), not a simple
+# per-night figure. Historical national, wage-index-*unadjusted* base rates: $2,174.14 (CY2016),
+# $2,349.66 (CY2018), $2,283.16 (CY2021), $2,439.02 (CY2023) -- all from independent secondary
+# sources citing the CMS OPPS final rule. **The CY2026 figure is now a primary-source-confirmed
+# fact, not an estimate**: CMS's own "January 2026 Web Addendum A" (OPPS APCs for CY 2026),
+# user-supplied 2026-08-05, gives APC 8011 directly -- Relative Weight 29.2310, national
+# unadjusted Payment Rate **$2,672.15** (SI J2). This exactly reproduces (to the cent) against
+# the $91.415 conversion factor independently back-calculated from the companion Addendum B file
+# supplied the same day (29.2310 x $91.415 = $2,672.15), which is about as strong a
+# cross-validation as two CMS files can give each other. **$2,672.15 (CY2026, national,
+# wage-index unadjusted) is therefore the sourced figure**, not a range, superseding the
+# $2,439.02-ish planning range this header carried a few hours earlier. Two caveats remain, and
+# are the reason this still isn't a base-case default: (a) $2,672.15 is the *national unadjusted*
+# rate -- a specific facility's actual payment is wage-index-adjusted, higher or lower depending
+# on region, a decision this project hasn't made; (b) C-APC 8011 pays per *qualifying stay*, not
+# per Treg dose -- whether a Treg infusion actually triggers 8+ qualifying observation hours (vs.
+# same-day discharge) is a clinical assumption this project hasn't made either, and is not a
+# pricing question at all. Given that, treg_dose_cost() below still takes
+# `observation_stay_cost_usd` as an explicit opt-in argument defaulting to 0 (same
+# "sourced-price, opt-in-only" pattern already used for cyclophosphamide) -- the base case is
+# unchanged, but a scenario run can now supply $2,672.15 directly, cited with confidence, without
+# editing this function.
 #
 # **Base case is a single dose** (n_doses = 1), analysis_plan.md §4.1's recorded recommendation
 # ("Single infusion base case; second dose as scenario") and §9.1's EJP formula (D-bar = 1 base
@@ -368,21 +388,25 @@ load_treg_dose_acquisition_cost <- function(proc_dir = "data/processed") {
 #' doesn't change this fee, see module header) + cyclophosphamide preconditioning (price sourced,
 #' dose is NOT -- `cyclophosphamide_dose_mg` defaults to 0, a known-incomplete placeholder, not a
 #' clinical claim that preconditioning is free or unnecessary; module header explains why a real
-#' number isn't filled in here). Does NOT include an observation-stay cost -- not sourced at all,
-#' see module header; no parameter for it exists here, deliberately, rather than a phantom
-#' always-zero field that would misrepresent it as modelled.
+#' number isn't filled in here) + an optional overnight observation-stay cost
+#' (`observation_stay_cost_usd`, defaults to 0 -- module header's 2026-08-04 sourcing pass gives
+#' $2,672.15 (CY2026, confirmed directly from CMS's own Addendum A -- module header) as the
+#' sourced figure to supply explicitly for a scenario run; the base case stays at 0, unchanged,
+#' since whether a Treg infusion actually qualifies for this billing category at all is a
+#' separate, still-open clinical/modelling question, not a pricing one).
 #'
 #' `n_doses` must be 1 (the recorded single-infusion base case, analysis_plan.md §4.1/§9.1) -- the
 #' 2-dose structural scenario (S6, §10.3) needs per-cycle-trace-level logic this one-time function
 #' doesn't have (see module header), so is deliberately rejected here rather than silently
 #' computed wrong as `n_doses x this function's per-dose output`.
-treg_dose_cost <- function(n_doses = 1, cyclophosphamide_dose_mg = 0, proc_dir = "data/processed",
-                            raw_dir = "data/raw", prices = NULL) {
+treg_dose_cost <- function(n_doses = 1, cyclophosphamide_dose_mg = 0, observation_stay_cost_usd = 0,
+                            proc_dir = "data/processed", raw_dir = "data/raw", prices = NULL) {
   stopifnot(n_doses == 1)
   if (is.null(prices)) prices <- load_drug_prices(raw_dir)
   acquisition <- load_treg_dose_acquisition_cost(proc_dir)
   cyclophosphamide_cost <- cyclophosphamide_dose_mg * prices$cyclophosphamide_usd_per_mg
-  n_doses * (acquisition + prices$iv_administration_usd + cyclophosphamide_cost)
+  n_doses * (acquisition + prices$iv_administration_usd + cyclophosphamide_cost
+             + observation_stay_cost_usd)
 }
 
 # ---- Utilities (data/processed/model_health_utilities.csv) ------------------------------------

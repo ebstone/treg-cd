@@ -39,10 +39,28 @@ in the same day (fifth pass, 2026-08-04 — `treg_dose_cost()`): acquisition cos
 $19,916.75) is fully traceable and wired in; infusion administration reuses the existing $57.90
 rate (a shorter infusion doesn't change the billing code); cyclophosphamide preconditioning has a
 sourced price but no sourced dose (defaults to $0, a known-incomplete placeholder); overnight
-observation-stay cost is not sourced at all. Single-dose base case only (analysis_plan.md §4.1) —
+observation-stay cost **price is now fully sourced** — CMS's own CY2026 Addendum A gives C-APC
+8011 (Comprehensive Observation Services) directly at **$2,672.15** (RW 29.2310, national
+unadjusted), user-supplied 2026-08-05 and cross-validated to the cent against a $91.415
+conversion factor independently back-calculated from the companion Addendum B file the same
+day. Still wired in as an explicit opt-in `treg_dose_cost(observation_stay_cost_usd = ...)`
+argument (default 0) rather than a base-case value — not because the price is uncertain, but
+because whether a Treg infusion actually qualifies for this billing category (≥8 hours of
+observation) is a separate, still-open clinical/modelling question. Single-dose base case only (analysis_plan.md §4.1) —
 the 2-dose structural scenario needs per-cycle-trace logic not implemented here. A genuine,
 previously-unflagged workbook inconsistency (A15, `docs/model_audit_v6.md`) was found and
 documented, not silently resolved, while wiring the acquisition cost in.
+
+**Market-comparator context added 2026-08-05** (not a model parameter, not part of any Gate):
+`data/raw/market_comparator_cell_therapy_prices.csv` records two real allogeneic-cell-therapy
+prices — Ryoncil ($194,000/infusion, Mesoblast's FDA-approved MSC therapy) and
+tabelecleucel/Ebvallo (ICER-recommended $143,900–$273,700/cycle) — for Discussion-section
+context on how this study's EJP compares to what the market/HTA bodies have actually priced
+allogeneic cell therapies at. `docs/analysis_plan.md` §9.1 now also specifies a **gross margin
+over COGS** output (P\* vs. the ten Ham-derived $4,979.19 manufacturing cost) for when
+`R/08_ejp.R` (Gate 8, still a stub) is built — explicitly scoped as a COGS-margin figure, not a
+manufacturer-profitability claim, which would need private company financials this project
+doesn't have.
 
 ## Repository structure
 

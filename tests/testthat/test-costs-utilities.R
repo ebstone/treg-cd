@@ -360,3 +360,43 @@ test_that("treg_dose_cost rejects n_doses != 1 rather than silently computing th
     "n_doses"
   )
 })
+
+test_that("treg_dose_cost's observation_stay_cost_usd defaults to 0 -- base case is unaffected by its existence", {
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  acquisition <- load_treg_dose_acquisition_cost(repo_root_relative("data", "processed"))
+
+  cost <- treg_dose_cost(
+    proc_dir = repo_root_relative("data", "processed"),
+    raw_dir = repo_root_relative("data", "raw")
+  )
+  expect_equal(cost, acquisition + prices$iv_administration_usd)
+})
+
+test_that("treg_dose_cost adds observation_stay_cost_usd only when a scenario value is explicitly supplied", {
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  acquisition <- load_treg_dose_acquisition_cost(repo_root_relative("data", "processed"))
+
+  # 2672.15 = CMS's own CY2026 Addendum A national base rate for C-APC 8011 (module header,
+  # confirmed 2026-08-05); this test exercises the mechanism, not a claim that this figure
+  # belongs in any particular scenario definition -- that's a separate clinical/modelling call.
+  cost_with_observation <- treg_dose_cost(
+    observation_stay_cost_usd = 2672.15,
+    proc_dir = repo_root_relative("data", "processed"),
+    raw_dir = repo_root_relative("data", "raw")
+  )
+  expect_equal(cost_with_observation, acquisition + prices$iv_administration_usd + 2672.15)
+})
+
+test_that("treg_dose_cost's cyclophosphamide and observation_stay arguments compose additively", {
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  acquisition <- load_treg_dose_acquisition_cost(repo_root_relative("data", "processed"))
+
+  cost <- treg_dose_cost(
+    cyclophosphamide_dose_mg = 300,
+    observation_stay_cost_usd = 2672.15,
+    proc_dir = repo_root_relative("data", "processed"),
+    raw_dir = repo_root_relative("data", "raw")
+  )
+  expect_equal(cost, acquisition + prices$iv_administration_usd
+                      + 300 * prices$cyclophosphamide_usd_per_mg + 2672.15)
+})
