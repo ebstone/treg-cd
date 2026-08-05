@@ -117,11 +117,35 @@ test_that("attach_treg_costs_utilities integrates cleanly against a real, small 
 test_that("load_dosing_schedule and load_drug_prices read the real sourced files without error", {
   schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
   prices <- load_drug_prices(repo_root_relative("data", "raw"))
-  expect_setequal(schedule$therapy, c("UST", "IFX"))
+  expect_setequal(schedule$therapy, c("UST", "IFX", "ADA"))
   expect_equal(prices$ust_induction_usd_per_mg, 12.808)
   expect_equal(prices$ust_maintenance_usd_per_mg, 155.883)
   expect_equal(prices$ifx_usd_per_mg, 3.109)
   expect_equal(prices$iv_administration_usd, 57.9)
+})
+
+test_that("ADA's sourced dosing schedule is correct (not yet consumed by any cost function)", {
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  ada <- schedule[schedule$therapy == "ADA", ]
+
+  induction <- ada[ada$phase == "Induction", ]
+  expect_equal(nrow(induction), 2)  # two UNEQUAL sequential doses, not one repeated dose like IFX
+  expect_setequal(induction$dose_amount, c(160, 80))
+  expect_equal(sum(induction$dose_amount * induction$n_doses), 240)  # total induction mg
+
+  maintenance <- ada[ada$phase == "Maintenance", ]
+  expect_equal(nrow(maintenance), 1)
+  expect_equal(maintenance$dose_amount, 40)
+  # Every-other-week = every single native 2-week cycle, NOT every 4th like UST/IFX's q8w --
+  # this is the one most likely to silently break if ADA ever reuses UST/IFX's cadence logic.
+  expect_equal(maintenance$maintenance_interval_cycles_native_2wk, 1)
+  expect_equal(maintenance$first_maintenance_cycle_native_2wk, 2)
+
+  # Unlike UST (induction) and IFX (all doses), ADA is entirely SC -- no row should be IV.
+  expect_true(all(ada$route == "SC"))
+  # Unlike UST induction (weight-tiered) and IFX (mg/kg), ADA's doses are flat/fixed.
+  expect_true(all(is.na(ada$weight_tier_min_kg)), all(is.na(ada$weight_tier_max_kg)))
+  expect_equal(unique(ada$dose_unit), "mg")  # not mg/kg
 })
 
 test_that("ust_induction_dose_mg picks the correct FDA weight tier, including exact boundaries", {

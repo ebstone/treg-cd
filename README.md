@@ -28,10 +28,13 @@ Cost/utility attachment (`R/04_costs_utilities.R`): utility attachment and the a
 per-cycle health-state monitoring cost landed 2026-08-04 (first pass). UST/IFX drug
 acquisition + administration costs (induction and maintenance, both dose size and cycle-aligned
 frequency, sourced from the STELARA/REMICADE Prescribing Information —
-`data/raw/ust_ifx_dosing_schedule.csv`) landed 2026-08-04 (second pass), deliberately excluding
+`data/raw/biologic_dosing_schedule.csv`) landed 2026-08-04 (second pass), deliberately excluding
 Treg's non-cured track (efficacy-equivalent to UST, but never actually charged UST's drug cost —
-see the module's header comment). ADA dosing and Treg's own one-time/two-dose acquisition cost
-are still not sourced/wired in.
+see the module's header comment). ADA's dosing schedule is now also sourced (same file, third
+pass, 2026-08-04 — HUMIRA Prescribing Information) but its drug-cost layer is not yet wired in:
+unlike UST/IFX, ADA has no applicable CMS Part-B ASP price (it's entirely self-administered SC),
+so a NADAC/WAC-based price still needs sourcing first. Treg's own one-time/two-dose acquisition
+cost is also still not wired in.
 
 ## Repository structure
 

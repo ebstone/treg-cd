@@ -47,7 +47,7 @@
 #
 # ---- UST/IFX drug acquisition/administration costs (added 2026-08-04) -------------------------
 #
-# Sourced from data/raw/ust_ifx_dosing_schedule.csv (dose size, route, and frequency, cited to
+# Sourced from data/raw/biologic_dosing_schedule.csv (dose size, route, and frequency, cited to
 # the STELARA/REMICADE FDA-approved Prescribing Information) and
 # data/raw/cms_asp_and_hcup_cost_sources.csv ($/mg ASP-based payment limits + the flat IV
 # administration fee). Two things this pairing needed that neither file resolves on its own:
@@ -88,9 +88,18 @@
 #
 # ---- Not yet implemented ------------------------------------------------------------------
 #
-# ADA's own dosing schedule/administration cost: not sourced yet (only UST/IFX were requested,
-# 2026-08-04). analysis_plan.md §7.1 item 12's "Re-extract" status is now resolved for UST/IFX
-# only.
+# ADA's dosing schedule (160mg wk0 + 80mg wk2 induction, 40mg SC every-other-week maintenance --
+# note: EOW is a materially different cadence from UST/IFX's every-8-weeks, every native 2-week
+# cycle rather than every 4th) is now SOURCED in data/raw/biologic_dosing_schedule.csv (added
+# 2026-08-04, same provenance standard as UST/IFX: HUMIRA Prescribing Information via
+# humirapro.com, cross-checked against medicalnewstoday.com, and against Aliyev's own 40mg
+# syringe unit cost already in this repo). ADA's drug-COST layer is NOT wired into this module
+# yet, though -- unlike UST/IFX, ADA is entirely self-administered SC (no Part-B-style ASP price
+# applies to any of its doses, including induction; Aliyev's own paper prices it via an FSS unit
+# cost instead, data/raw/aliyev2019_appendixS1_table2_parameters.csv). A current $/mg price for
+# ADA (NADAC or WAC benchmark, not CMS ASP) still needs sourcing before induction_drug_cost()/
+# maintenance_drug_cost_by_cycle() can be extended to it -- flagged here rather than reusing the
+# stale 2017 FSS figure or guessing at a current price.
 #
 # Treg's own acquisition cost (ten Ham-derived, data/processed/model_dose_costs_and_psa_ranges.csv)
 # is a decision-tree-level one-time/two-dose event, not a recurring per-cycle charge (R/00's
@@ -139,7 +148,7 @@ health_state_monitoring_costs <- function() {
 CT_DRUG_COST_2017_USD <- 67
 ct_drug_cost <- function() CT_DRUG_COST_2017_USD * INFLATION_2017_TO_2025
 
-# ---- UST/IFX drug acquisition + administration cost (data/raw/ust_ifx_dosing_schedule.csv) ----
+# ---- UST/IFX drug acquisition + administration cost (data/raw/biologic_dosing_schedule.csv) ----
 
 #' Assumed patient body weight for weight-based dosing (UST induction tier selection, IFX mg/kg
 #' conversion). Aliyev's own cohort mean (analysis_plan.md §5: "mean age 35, 71 kg, 50% male"),
@@ -151,10 +160,12 @@ ASSUMED_PATIENT_WEIGHT_KG <- 71
 #' mg Vial)"). Used for vial-rounding -- see module header.
 IFX_VIAL_SIZE_MG <- 100
 
-#' UST/IFX dosing schedule (data/raw/ust_ifx_dosing_schedule.csv, sourced 2026-08-04: STELARA/
-#' REMICADE Prescribing Information).
+#' UST/IFX/ADA dosing schedule (data/raw/biologic_dosing_schedule.csv, sourced 2026-08-04:
+#' STELARA/REMICADE/HUMIRA Prescribing Information). ADA rows are present but not yet consumed by
+#' any cost function in this module -- see "Not yet implemented" in the module header (no current
+#' ADA drug price sourced yet).
 load_dosing_schedule <- function(raw_dir = "data/raw") {
-  utils::read.csv(file.path(raw_dir, "ust_ifx_dosing_schedule.csv"), stringsAsFactors = FALSE)
+  utils::read.csv(file.path(raw_dir, "biologic_dosing_schedule.csv"), stringsAsFactors = FALSE)
 }
 
 #' $/mg (or $/mg-equivalent) drug prices and the flat IV administration fee
@@ -218,7 +229,7 @@ induction_drug_cost <- function(therapy, weight_kg, schedule, prices) {
 
 #' Per-cycle maintenance drug cost, added on top of on_biologic occupancy at the real dosing
 #' cadence read from `schedule` (every 4th cycle at this project's native 2-week cycle = every 8
-#' weeks, first dose at maintenance-phase cycle 4 -- data/raw/ust_ifx_dosing_schedule.csv), for as
+#' weeks, first dose at maintenance-phase cycle 4 -- data/raw/biologic_dosing_schedule.csv), for as
 #' long as a patient remains on that arm's own biologic track. `on_biologic_trace` mass naturally
 #' goes to 0 for patients who've switched to CT or hit the 2-year cap (R/02_markov_engine.R), so
 #' this needs no separate cap-awareness.
