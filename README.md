@@ -410,6 +410,16 @@ mechanics on top of an invented timing assumption isn't worth it unless a real a
 New `analysis/run_scenario_analyses.R` steps for both; `docs/analysis_plan.md` §10.3/§10.5
 updated. Full test suite: 728 assertions (up from 679), 0 failures.
 
+**`renv.lock` verified and regenerated (2026-08-05)**, closing the resolutions memo's item 9. The
+lockfile and `renv/` activation scripts were already present (from an earlier session) but this
+file still claimed otherwise — that claim itself had gone stale, not the lockfile. `renv::status()`
+found a real, if minor, gap: `mgcv` and its own dependencies (`lattice`/`Matrix`/`nlme`) — used by
+`R/07_evpi_evppi.R`'s EVPPI GAM regression since that module's first pass — were installed and
+actively used but never recorded. `renv::snapshot()` fixed this (29 packages now pinned, up from
+25); the only remaining gap `renv::status()` reports is `voi` (used in code, not installed), which
+is expected and already documented (`voi`/`BCEA` cross-check deprioritized, R/07's own module
+header) rather than a new finding. This section rewritten accordingly.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,
@@ -423,25 +433,35 @@ updated. Full test suite: 728 assertions (up from 679), 0 failures.
 - `docs/CHEERS_2022_checklist.md` — working CHEERS 2022 submission checklist.
 - `docs/model_structure.md` — technical model spec, to be written alongside the `R/` engine.
 - `R/` — analysis pipeline (decision tree, Markov engine, cure module, costs/utilities,
-  deterministic results, PSA, EVPI/EVPPI, EJP), currently stubs only.
-- `analysis/` — top-level entry points that run the `R/` pipeline.
+  deterministic results, PSA, EVPI/EVPPI, EJP, structural scenarios) — built out end to end as of
+  2026-08-05 (see Status above), not stubs.
+- `analysis/` — top-level entry points that run the `R/` pipeline (`run_full_analysis.R`,
+  `run_scenario_analyses.R`, `run_base_case.R`).
 - `tests/testthat/` — regression and invariant tests (transition rows sum to 1, cohort
-  conservation, discounting checks).
+  conservation, discounting checks). 728 assertions, 0 failures as of 2026-08-05.
 - `output/` — generated figures and tables (not committed as final until a tagged release).
 
 ## Reproducing the analysis
 
-Not yet runnable end-to-end. Once the `R/` pipeline is implemented:
-
 ```r
-renv::restore()               # restore the locked package environment
-source("analysis/run_full_analysis.R")   # regenerates every number, figure and table
+renv::restore()                            # restore the locked package environment
+source("analysis/run_full_analysis.R")     # base case, PSA, EVPI/EVPPI, EJP, lifetime horizon,
+                                            # h sweep, prior sensitivity, refractory scenario (S3)
+source("analysis/run_scenario_analyses.R") # S1, S2, S4, S5, S7, S9, S10, S11, S12
 ```
 
-`renv.lock` has not been generated yet (no R environment has been initialized in this
-repository). Run `renv::init()` once the `R/` scripts have real package dependencies, and commit
-the resulting lockfile — required for the journal's Data Availability Statement
-(`docs/analysis_plan.md` §12.3).
+`renv.lock` **is generated and current** (verified and regenerated 2026-08-05, resolutions memo
+item 9 — this file previously claimed it wasn't generated at all, which had itself gone stale) —
+29 CRAN packages pinned against R 4.6.1, required for the journal's Data Availability Statement
+(`docs/analysis_plan.md` §12.1/§12.3). Regenerated via `renv::snapshot()` after `renv::status()`
+flagged a real gap: `mgcv` and its own dependencies (`lattice`/`Matrix`/`nlme`), used by
+`R/07_evpi_evppi.R`'s EVPPI GAM regression, were installed and used but not yet recorded. One
+remaining, deliberate exception: `voi` is used in code (`R/07`'s `cross_check_voi()`) but not
+installed and therefore not in the lockfile — the `voi`/`BCEA` cross-check is itself deprioritized
+(this project's own `mgcv`-based implementation of Strong, Oakley & Brennan 2014 already IS the
+method `voi` wraps; see `R/07`'s own module header), not a blocker, so this is expected and
+documented rather than an oversight. Re-run `renv::snapshot()` and commit the updated lockfile any
+time a new package dependency is added.
 
 ## Licence
 
