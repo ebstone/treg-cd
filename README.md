@@ -24,7 +24,12 @@ occupancy vectors), `R/02_markov_engine.R` (cohort Markov core, with the M-S-to-
 mixture-cure extension: week-56 landmark split, Sustained Deep Remission state, relapse hazard,
 cap-aware relapse re-entry) are built, wired together, and tested end to end (induction ->
 maintenance [-> cure branching for Treg], cohort-conserving over a full lifetime horizon).
-Cost/utility attachment (`R/04`) is not yet written.
+Cost/utility attachment (`R/04_costs_utilities.R`) first pass landed 2026-08-04: utility
+attachment and the arm-independent per-cycle health-state monitoring cost are implemented and
+tested. Drug acquisition/administration costs (UST/IFX/ADA dosing, Treg's one-time/two-dose
+acquisition cost) are not yet implemented — blocked on a cited dose-size + frequency source not
+yet in `data/raw/` (see the module's header comment and `docs/analysis_plan.md` §7.1 items
+12–15). Every cost this module currently returns is non-drug cost only.
 
 ## Repository structure
 
