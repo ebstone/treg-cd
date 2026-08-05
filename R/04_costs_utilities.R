@@ -9,8 +9,9 @@
 # health-state monitoring cost in full. UST/IFX drug acquisition + administration costs added
 # 2026-08-04 (second pass). ADA dosing sourced 2026-08-04 (third pass) and its drug-cost layer
 # wired in the same day (fourth pass) -- see "UST/IFX/ADA drug acquisition/administration costs"
-# below. Treg's own ten Ham-derived dose cost is still not implemented -- see "Not yet
-# implemented" below for why. Non-drug-cost outputs from the first pass
+# below. Treg's own dose cost sourced and wired in the same day (fifth pass) -- see "Treg's own
+# dose cost" below; NOT fully resolved, see that section for what's still open (cyclophosphamide
+# dose, observation-stay cost). Non-drug-cost outputs from the first pass
 # ("non_drug_cost_by_cycle" etc.) are kept as separately named fields even now that drug costs
 # exist elsewhere in this module -- don't conflate the two.
 #
@@ -43,8 +44,8 @@
 #      directly from Aliyev's own reported 2017 USD per-cycle figures below, not from the
 #      workbook's arm-specific composites.
 #   2. An arm-specific drug-acquisition/administration cost, layered on top only for arms and
-#      cycles where a dose is actually given. Implemented for UST/IFX/ADA -- see below; Treg's
-#      own dose cost is not (see "Not yet implemented").
+#      cycles where a dose is actually given. Implemented for UST/IFX/ADA -- see below -- and,
+#      partially, Treg (see "Treg's own dose cost" below for what's still open).
 #
 # ---- UST/IFX/ADA drug acquisition/administration costs (UST/IFX added 2026-08-04; ADA added ---
 # ---- the same day, in a later pass) -------------------------------------------------------------
@@ -101,13 +102,59 @@
 # for the drug-cost layer to activate at all -- attach_treg_costs_utilities() deliberately never
 # passes one for its Markov portion.
 #
-# ---- Not yet implemented ------------------------------------------------------------------
+# ---- Treg's own dose cost (added 2026-08-04) ---------------------------------------------------
 #
-# Treg's own acquisition cost (ten Ham-derived, data/processed/model_dose_costs_and_psa_ranges.csv)
-# is a decision-tree-level one-time/two-dose event, not a recurring per-cycle charge (R/00's
-# third-revision note) -- it belongs in R/01_decision_tree.R's output or a one-time-cost step in
-# R/05_deterministic_results.R, not in this per-cycle attachment function, and is still not wired
-# in.
+# treg_dose_cost() below is a one-time, decision-tree-level cost (R/00's third-revision note),
+# same architectural pattern as induction_drug_cost() above -- not a per-cycle trace function,
+# but still housed in this module rather than R/01_decision_tree.R, for consistency with that
+# precedent. Three components, sourced to very different standards:
+#
+# 1. **Acquisition ($19,916.75/dose): fully traceable.** analysis_plan.md §7.1 item 12 already
+#    carries "Derived" status (not "Action required") -- the ten Ham et al. 2020 manufacturing
+#    costing framework's arithmetic is reproduced end to end in
+#    data/processed/model_tenham_derived_treg_dose_cost.csv. treg_dose_cost() reads that file's
+#    own final "Retail price per treatment/dose" line directly, NOT
+#    data/processed/model_dose_costs_and_psa_ranges.csv's "TREG dose cost" `value_usd` column
+#    ($18,908.74) -- found while wiring this in: those two figures disagree by a consistent
+#    ~0.9494x factor, and the SAME ~0.9494x gap appears independently for that file's IFX dose
+#    cost row too ($1,014.20 vs its own $1,068 psa_base), which rules out coincidence and points
+#    to an unflagged inconsistency in the source workbook (comparable to A6/A7,
+#    docs/model_audit_v6.md) -- not resolved here, just not silently picked around.
+# 2. **Infusion administration: reuses the existing $57.90 CMS PFS rate** (prices$
+#    iv_administration_usd, HCPCS 96365), same as UST induction/IFX/ADA's IV doses. Item 13
+#    (§7.1) flags that "the reference programme administers a ~30-minute infusion" versus the
+#    old model's 1-hour assumption -- but CPT/HCPCS 96365 covers "initial, up to 1 hour"
+#    regardless of the exact duration within that window, so this doesn't actually change the
+#    fee; noted here so it isn't mistaken for an unresolved gap.
+# 3. **Cyclophosphamide preconditioning: PRICE sourced, DOSE is not.** Item 13 also flags that
+#    "the trial protocol includes a cyclophosphamide preconditioning component," currently
+#    modelled as zero. $/mg is now sourced (HCPCS J9075, data/raw/cms_asp_and_hcup_cost_sources.csv,
+#    same WV Bureau for Medical Services ASP-methodology fee schedule already used for IFX). The
+#    actual DOSE is NOT sourced: the cited reference trial (NCT06721962, "RESTORE") confirms "low
+#    dose cyclophosphamide conditioning" in its public registry but does not publish a specific
+#    mg or mg/kg figure. `cyclophosphamide_dose_mg` defaults to 0 in treg_dose_cost() -- a
+#    known-incomplete placeholder, not a clinical claim that preconditioning is unnecessary or
+#    free. Do not fill this in with a dose borrowed from a different program's regimen (e.g. a
+#    CAR-T lymphodepletion protocol) without flagging it as a proxy, not a citation -- ask
+#    E. Stone/the clinical co-authors first.
+#
+# **Not sourced at all: overnight observation-stay cost**, also named in item 13. CMS's
+# comprehensive-observation payment (C-APC 8011 under OPPS) is a bundled/packaged rate with
+# specific qualifying criteria, not a simple per-night figure, and no confidently current (2025/
+# 2026) rate could be found in this environment -- only a 2021 figure ($2,283.16), which was not
+# used since inflating it without a cited index would be exactly the kind of unsupported number
+# this project's whole methodology exists to avoid. No parameter for this exists in
+# treg_dose_cost() -- a phantom always-zero field would misrepresent this as modelled when it
+# isn't. Flagged here as a real, still-open gap.
+#
+# **Base case is a single dose** (n_doses = 1), analysis_plan.md §4.1's recorded recommendation
+# ("Single infusion base case; second dose as scenario") and §9.1's EJP formula (D-bar = 1 base
+# case). The 2-dose STRUCTURAL SCENARIO (S6, §10.3) is deliberately not implemented here: the
+# plan's own D-bar formula treats the second dose as conditional on the patient still being on
+# therapy at that timepoint, and discounted accordingly -- that needs the per-cycle trace, not a
+# one-time decision-tree cost, so belongs with the scenario-running logic (R/05/§10.3), not this
+# function. treg_dose_cost() enforces n_doses == 1 rather than silently accepting a larger value
+# and getting the 2-dose scenario's actual mechanics wrong.
 
 if (!exists("MAINTENANCE_STATES")) source("R/utils/transition_matrix.R")
 if (!exists("discount_factor")) source("R/02_markov_engine.R")
@@ -185,6 +232,7 @@ load_drug_prices <- function(raw_dir = "data/raw") {
     ust_maintenance_usd_per_mg = price_for("J3357"),
     ifx_usd_per_mg = price_for("J1745"),
     ada_usd_per_mg = price_for("J0135"),
+    cyclophosphamide_usd_per_mg = price_for("J9075"),
     iv_administration_usd = price_for("96365")
   )
 }
@@ -292,6 +340,49 @@ maintenance_drug_cost_by_cycle <- function(on_biologic_trace, therapy, weight_kg
   per_dose_cost <- dose_mg_for_row(row, weight_kg, schedule) * drug_price_per_mg(therapy, "Maintenance", prices) + admin_fee
 
   mass_on_biologic * is_dose_cycle * per_dose_cost
+}
+
+# ---- Treg's own dose cost (data/processed/model_tenham_derived_treg_dose_cost.csv) -------------
+
+#' Treg's own one-time dose acquisition cost (ten Ham et al. 2020 manufacturing costing
+#' framework; analysis_plan.md §7.1 item 12, "Derived"). Reads the derivation file's own final
+#' retail-price line directly -- see module header on why this deliberately does NOT read
+#' model_dose_costs_and_psa_ranges.csv's "TREG dose cost" `value_usd` column instead (a real,
+#' previously-unflagged ~0.9494x discrepancy found while wiring this in).
+load_treg_dose_acquisition_cost <- function(proc_dir = "data/processed") {
+  lines <- readLines(file.path(proc_dir, "model_tenham_derived_treg_dose_cost.csv"))
+  blank <- which(lines == "")
+  stopifnot(length(blank) >= 1)
+  second_block <- utils::read.csv(
+    text = paste(lines[(blank[1] + 1):length(lines)], collapse = "\n"), stringsAsFactors = FALSE
+  )
+  val <- second_block$value_usd[
+    second_block$final_buildup_item == "Retail price per treatment/dose (used as cost_treg_dose base case)"
+  ]
+  stopifnot(length(val) == 1)
+  as.numeric(val)
+}
+
+#' Treg's one-time per-dose cost: acquisition (ten Ham-derived, fully traceable) + infusion
+#' administration (same $57.90 CMS PFS rate as UST/IFX/ADA's IV doses -- a 30-minute infusion
+#' doesn't change this fee, see module header) + cyclophosphamide preconditioning (price sourced,
+#' dose is NOT -- `cyclophosphamide_dose_mg` defaults to 0, a known-incomplete placeholder, not a
+#' clinical claim that preconditioning is free or unnecessary; module header explains why a real
+#' number isn't filled in here). Does NOT include an observation-stay cost -- not sourced at all,
+#' see module header; no parameter for it exists here, deliberately, rather than a phantom
+#' always-zero field that would misrepresent it as modelled.
+#'
+#' `n_doses` must be 1 (the recorded single-infusion base case, analysis_plan.md §4.1/§9.1) -- the
+#' 2-dose structural scenario (S6, §10.3) needs per-cycle-trace-level logic this one-time function
+#' doesn't have (see module header), so is deliberately rejected here rather than silently
+#' computed wrong as `n_doses x this function's per-dose output`.
+treg_dose_cost <- function(n_doses = 1, cyclophosphamide_dose_mg = 0, proc_dir = "data/processed",
+                            raw_dir = "data/raw", prices = NULL) {
+  stopifnot(n_doses == 1)
+  if (is.null(prices)) prices <- load_drug_prices(raw_dir)
+  acquisition <- load_treg_dose_acquisition_cost(proc_dir)
+  cyclophosphamide_cost <- cyclophosphamide_dose_mg * prices$cyclophosphamide_usd_per_mg
+  n_doses * (acquisition + prices$iv_administration_usd + cyclophosphamide_cost)
 }
 
 # ---- Utilities (data/processed/model_health_utilities.csv) ------------------------------------

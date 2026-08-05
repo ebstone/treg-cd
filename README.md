@@ -34,8 +34,15 @@ see the module's header comment). ADA's dosing schedule was sourced and its drug
 in the same day (third/fourth pass, 2026-08-04 — HUMIRA Prescribing Information; priced via CMS
 Medicaid's NADAC rather than ASP, since adalimumab is entirely self-administered SC with no
 applicable Part-B ASP price for any of its doses). All three biologic comparators (UST/IFX/ADA)
-now have both dosing and cost fully wired in. Treg's own one-time/two-dose acquisition cost is
-still not wired in.
+now have both dosing and cost fully wired in. Treg's own one-time dose cost was sourced and wired
+in the same day (fifth pass, 2026-08-04 — `treg_dose_cost()`): acquisition cost (ten Ham-derived,
+$19,916.75) is fully traceable and wired in; infusion administration reuses the existing $57.90
+rate (a shorter infusion doesn't change the billing code); cyclophosphamide preconditioning has a
+sourced price but no sourced dose (defaults to $0, a known-incomplete placeholder); overnight
+observation-stay cost is not sourced at all. Single-dose base case only (analysis_plan.md §4.1) —
+the 2-dose structural scenario needs per-cycle-trace logic not implemented here. A genuine,
+previously-unflagged workbook inconsistency (A15, `docs/model_audit_v6.md`) was found and
+documented, not silently resolved, while wiring the acquisition cost in.
 
 ## Repository structure
 

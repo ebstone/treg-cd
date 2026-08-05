@@ -311,3 +311,52 @@ test_that("summarise_arm adds a one-time induction cost undiscounted, on top of 
   expect_equal(res_no_induction$drug_cost, 10)
   expect_equal(res_no_induction$total_cost, 40)
 })
+
+# ---- Treg's own dose cost (added 2026-08-04) ------------------------------------------------
+
+test_that("load_treg_dose_acquisition_cost reads the ten Ham derivation file's own final retail price", {
+  cost <- load_treg_dose_acquisition_cost(repo_root_relative("data", "processed"))
+  expect_equal(cost, 19916.749796272725, tolerance = 1e-6)
+  # This must NOT match model_dose_costs_and_psa_ranges.csv's "TREG dose cost" value_usd column
+  # ($18,908.74) -- the two disagree by a real, previously-unflagged ~0.9494x factor (module
+  # header). Asserting the *other* number is wrong here is a deliberate regression guard against
+  # someone "fixing" this function to read that file instead.
+  expect_false(isTRUE(all.equal(cost, 18908.735499999464, tolerance = 1e-6)))
+})
+
+test_that("load_drug_prices includes cyclophosphamide's sourced price", {
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  expect_equal(prices$cyclophosphamide_usd_per_mg, 0.0962)
+})
+
+test_that("treg_dose_cost sums acquisition + administration with no cyclophosphamide by default", {
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  acquisition <- load_treg_dose_acquisition_cost(repo_root_relative("data", "processed"))
+
+  cost <- treg_dose_cost(
+    proc_dir = repo_root_relative("data", "processed"),
+    raw_dir = repo_root_relative("data", "raw")
+  )
+  expect_equal(cost, acquisition + prices$iv_administration_usd)
+})
+
+test_that("treg_dose_cost adds cyclophosphamide cost only when a dose is explicitly supplied", {
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+  acquisition <- load_treg_dose_acquisition_cost(repo_root_relative("data", "processed"))
+
+  cost_with_precond <- treg_dose_cost(
+    cyclophosphamide_dose_mg = 300,
+    proc_dir = repo_root_relative("data", "processed"),
+    raw_dir = repo_root_relative("data", "raw")
+  )
+  expect_equal(cost_with_precond,
+               acquisition + prices$iv_administration_usd + 300 * prices$cyclophosphamide_usd_per_mg)
+})
+
+test_that("treg_dose_cost rejects n_doses != 1 rather than silently computing the 2-dose scenario wrong", {
+  expect_error(
+    treg_dose_cost(n_doses = 2, proc_dir = repo_root_relative("data", "processed"),
+                   raw_dir = repo_root_relative("data", "raw")),
+    "n_doses"
+  )
+})
