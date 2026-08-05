@@ -51,6 +51,25 @@ the 2-dose structural scenario needs per-cycle-trace logic not implemented here.
 previously-unflagged workbook inconsistency (A15, `docs/model_audit_v6.md`) was found and
 documented, not silently resolved, while wiring the acquisition cost in.
 
+`R/05_deterministic_results.R` (first pass, 2026-08-05): wires `R/00`–`R/04` together end to end
+for all four arms (UST/IFX/ADA comparators, TREG intervention) at a 6.15-year horizon (Aliyev's
+own 40×8-week span, converted to the native 2-week cycle) — a true lifetime horizon needs US
+life-table mortality extrapolation, not sourced anywhere in this repo, and is a flagged gap rather
+than silently approximated. Implements `run_base_case()` (UST/IFX/ADA plus TREG at π=0, the only
+cure fraction with an actual number behind it per Decision 4 — labelled the Null floor scenario,
+not a Treg efficacy claim) and, prioritised over the one-way tornado per analysis_plan.md §10.1's
+own recommendation, the (π, price) **headroom frontier** (Aim 4): `headroom_pi_star()` solves via
+root-finding for the minimum cure fraction at which Treg's NMB matches the best comparator's, and
+`headroom_frontier()` sweeps it across a price grid. `analysis/run_base_case.R` is now a real, not
+stub, entry point, writing `output/tables/base_case_results.csv`. 10 new tests (64 passing total).
+Explicitly out of scope for this pass: the full one-way tornado (most Section 7.1 parameter
+ranges aren't sourced yet), discount-rate/societal/refractory scenarios, and S1–S12 structural
+scenarios — see the module's own header for the complete list. Also recorded there: Gate 2's
+"reproduce Aliyev's published results" criterion (Aim 5) can't be fully closed from data already
+in this repo — only Aliyev's transition-probability appendix was transcribed, not his own cost/
+utility parameters or a results table to diff against, since this project deliberately re-sources
+costs from current CMS pricing rather than his 2017 figures.
+
 **Market-comparator context added 2026-08-05** (not a model parameter, not part of any Gate):
 `data/raw/market_comparator_cell_therapy_prices.csv` records two real allogeneic-cell-therapy
 prices — Ryoncil ($194,000/infusion, Mesoblast's FDA-approved MSC therapy) and
