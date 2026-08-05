@@ -44,10 +44,12 @@
 #      memo asks for.
 #   9. Refractory-population scenario (S3, added 2026-08-05, resolutions memo sec 11 item 6):
 #      run_refractory_scenario() (R/05) -- UST/IFX/ADA's induction and maintenance matrices
-#      adjusted by multipliers sourced from UNITI-1 vs UNITI-2 (R/utils/refractory_multipliers.R),
-#      run at the same 6.15-year horizon as step 1. CT and TREG are unaffected by design (that
-#      file's own header); surgery-hazard elevation for the refractory population is explicitly
-#      NOT part of this pass, a flagged gap, not an oversight.
+#      adjusted by response/remission multipliers sourced from UNITI-1 vs UNITI-2, plus a surgery-
+#      hazard multiplier (added same day, R/utils/refractory_multipliers.R) sourced from SOJOURN
+#      (naive) vs. Kassouri et al. 2020 (a MORE severely refractory population than this project's
+#      own refractory definition -- used as a deliberate, documented upper-bound proxy, not a
+#      matched point estimate). Run at the same 6.15-year horizon as step 1. CT and TREG are
+#      unaffected by design (that file's own header).
 #
 # Half-cycle correction (A12, docs/model_audit_v6.md; analysis_plan.md sec 4.1) also landed
 # 2026-08-05, same day as steps 7-8 -- but needed NO change to this script at all:

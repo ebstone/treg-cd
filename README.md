@@ -308,14 +308,33 @@ refractory population by design, so nothing about it needs adjusting for this sc
 pre-existing behaviour, verified by a dedicated test); new `run_refractory_scenario()` runs both
 populations end to end and returns one combined table
 (`output/tables/refractory_scenario_results.csv`, `analysis/run_full_analysis.R` step 9/9).
-**Explicitly not included, a flagged gap**: elevated surgery hazard (the other half of Decision
-3's own recommended method) — no equivalently clean paired refractory-vs-naive surgery-rate data
-was found in the same trial programme in the time available. **Result, 6.15-year horizon:** QALYs
-fall for all three comparators under the refractory adjustment, as expected; total cost also
-falls for all three, a real (not a bug) mechanical consequence of more frequent CT-switching being
-cheaper than continuing branded-biologic therapy at this project's current CT/biologic price gap
-— net NMB effect is small and mixed by comparator/WTP threshold. `docs/analysis_plan.md` §5.4/§10.3
-updated. Full test suite: 536 assertions (up from 474), 0 failures.
+
+**Elevated surgery hazard added the same day**, closing the other half of Decision 3's recommended
+method — not silently dropped, but a genuinely imperfect proxy, documented as such rather than
+presented as a matched estimate. No equivalently clean paired refractory-vs-naive surgery-rate
+data exists (UNITI-1/UNITI-2 weren't powered to report surgery by subgroup; an extensive follow-up
+search of real-world bio-naive-vs-bio-experienced cohorts found the same gap — they report
+remission by that split, not surgery). What's used instead
+(`data/raw/refractory_surgery_hazard_multiplier.csv`) is two separate studies at two different
+severity tiers: SOJOURN's 11.6% one-year surgery incidence in biologic-naive UST patients (Vu
+et al. 2023) vs. Kassouri et al. 2020's 23.5% rate at week 48 in patients who'd already failed
+anti-TNF **and** a second-line biologic — a *more* severe population than this project's own
+refractory definition (single anti-TNF failure). The resulting 2.03× ratio is used as a
+**deliberate upper-bound/conservative proxy, not a matched point estimate** (Eric's own call,
+2026-08-05, given the mismatch and the absence of a better-matched source). Converted to a
+per-2-week-cycle multiplier the same way as the maintenance-remission one;
+`apply_refractory_multiplier_maintenance()` gained an optional surgery-hazard step (`NULL` default:
+byte-identical to before) that elevates each row's Surgery probability and rescales every other
+column proportionally to compensate — the same mechanic `age_adjust_matrix()` already uses for
+installing a new Death probability, so row-stochasticity is preserved exactly.
+
+**Result, 6.15-year horizon:** QALYs fall for all three comparators under the refractory
+adjustment, as expected; total cost also falls for all three, a real (not a bug) mechanical
+consequence of more frequent CT-switching being cheaper than continuing branded-biologic therapy
+at this project's current CT/biologic price gap, which the (small) surgery-hazard elevation only
+partially offsets — net NMB effect is small and mixed by comparator/WTP threshold.
+`docs/analysis_plan.md` §5.4/§10.3 updated. Full test suite: 555 assertions (up from 474), 0
+failures.
 
 ## Repository structure
 

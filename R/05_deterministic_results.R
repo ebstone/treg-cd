@@ -215,7 +215,9 @@ run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg =
     )
     therapy_matrix <- apply_refractory_multiplier_maintenance(
       therapy_matrix, refractory_multipliers$maintenance_remission_multiplier_cumulative,
-      refractory_multipliers$maintenance_cumulative_n_cycles
+      refractory_multipliers$maintenance_cumulative_n_cycles,
+      surgery_hazard_multiplier_cumulative = refractory_multipliers$surgery_hazard_multiplier_cumulative,
+      surgery_cumulative_n_cycles = refractory_multipliers$surgery_cumulative_n_cycles
     )
   }
   split <- run_decision_tree(induction_row)

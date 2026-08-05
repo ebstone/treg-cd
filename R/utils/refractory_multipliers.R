@@ -11,12 +11,29 @@
 # post-anti-TNF-failure CD cohorts, and vary those multipliers widely. State the approach as a
 # scenario built on assumption, not as a separately estimated model." This file is exactly that:
 # a multiplicative adjustment to Aliyev's own published (biologic-naive) UST/IFX/ADA matrices,
-# not a from-scratch refractory model. It covers response/remission only -- **elevated surgery
-# hazard is NOT included in this pass**, a real, flagged gap (no equivalently clean paired
-# refractory-vs-naive surgery-rate data was found in the same trial program in the time available;
-# a future pass could source one separately). CT's own matrix is also left untouched: CT already
-# functions as this model's "failed biologic" fallback track, and no refractory-specific CT data
-# was sought this pass either.
+# not a from-scratch refractory model. CT's own matrix is left untouched: CT already functions as
+# this model's "failed biologic" fallback track, and no refractory-specific CT data was sought.
+#
+# ---- Surgery hazard: sourced, but a genuinely imperfect proxy -- read before using -------------
+#
+# Response/remission (UNITI-1 vs UNITI-2, below) is an unusually clean pairing: same drug, same
+# dose, same endpoint, same trial programme, differing only in prior-anti-TNF-failure eligibility.
+# No equivalently clean pairing exists for surgery. Trials report response/remission because
+# that's what they're powered for; real-world bio-naive-vs-bio-experienced cohorts (checked:
+# Parra et al. 2022 BMC Gastroenterol, the ICC registry, several others) report clinical/
+# endoscopic remission by that split but not surgery. What IS available
+# (data/raw/refractory_surgery_hazard_multiplier.csv) is two SEPARATE studies at two DIFFERENT
+# severity tiers: SOJOURN's 11.6% one-year cumulative surgery incidence in biologic-naive
+# ustekinumab-treated patients (the right severity tier), and Kassouri et al. 2020's 23.5%
+# surgery rate at week 48 in patients who had already failed anti-TNF AND a second-line biologic
+# (vedolizumab or ustekinumab) -- i.e. starting a THIRD line, a MORE severe population than this
+# project's refractory scenario (which is UNITI-1-equivalent: single anti-TNF failure, starting a
+# SECOND line). Ratio-ing these two gives a multiplier (2.03x) that is a deliberate, documented
+# upper-bound/conservative proxy for surgery-hazard elevation, not a matched point estimate at the
+# same severity tier as the response/remission multipliers -- flagged explicitly at every point
+# this multiplier surfaces (loaded value, applied matrices, downstream tables/docs), per Eric's
+# own instruction (2026-08-05) to use it with that caveat stated plainly rather than search
+# indefinitely for a better-matched source that may not exist in the published literature.
 #
 # ---- Source: UNITI-1 vs UNITI-2 (Feagan et al. 2016, NEJM) -------------------------------------
 #
@@ -62,7 +79,13 @@
 # including the Surgery row) -- a deliberately narrow, sourced-quantity-only adjustment; this
 # project does NOT also reshuffle Moderate-Severe-Responder<->Mild flows, since no maintenance-
 # phase multiplier for those was sourced this pass (only Remission's rate was reported by
-# refractory-subgroup in Figure 3B).
+# refractory-subgroup in Figure 3B). The same function's optional surgery-hazard step (below) runs
+# AFTER the Remission/Mild adjustment, in the same row, using age_adjust_matrix()'s own
+# proportional-rescale mechanic (R/utils/transition_matrix.R) to install a higher Surgery
+# probability: every OTHER column in the row (including the just-adjusted Remission/Mild, and
+# Death) is shrunk by the same factor, `(1 - new_surgery) / (1 - old_surgery)`, so the row still
+# sums to 1 with no separately-chosen "which column pays for it" rule -- exactly the same
+# mechanic this codebase already uses and tests for installing a new Death probability.
 
 if (!exists("build_transition_matrix")) source("R/utils/transition_matrix.R")
 
@@ -92,12 +115,25 @@ load_refractory_multipliers <- function(raw_dir = "data/raw") {
   maintenance_remission_uniti2 <- rate("maintenance", "UNITI-2 population (IM-UNITI subgroup)",
                                         "clinical remission (CDAI <150)", dose = "90 mg SC q8w")
 
+  surgery_df <- utils::read.csv(
+    file.path(raw_dir, "refractory_surgery_hazard_multiplier.csv"),
+    stringsAsFactors = FALSE
+  )
+  surgery_naive <- surgery_df$rate_pct[surgery_df$population == "biologic_naive"] / 100
+  surgery_refractory <- surgery_df$rate_pct[surgery_df$population == "refractory_double_biologic_failure"] / 100
+  stopifnot(length(surgery_naive) == 1, length(surgery_refractory) == 1)
+
   list(
     raw = df,
+    surgery_raw = surgery_df,
     induction_response_multiplier = induction_response_uniti1 / induction_response_uniti2,
     induction_remission_multiplier = induction_remission_uniti1 / induction_remission_uniti2,
     maintenance_remission_multiplier_cumulative = maintenance_remission_uniti1 / maintenance_remission_uniti2,
-    maintenance_cumulative_n_cycles = 18  # week 8 -> week 44 = 36 weeks = 18 native 2-week cycles
+    maintenance_cumulative_n_cycles = 18,  # week 8 -> week 44 = 36 weeks = 18 native 2-week cycles
+    # UPPER-BOUND PROXY, not a matched point estimate -- see this file's own module header
+    # ("Surgery hazard: sourced, but a genuinely imperfect proxy") before using this value.
+    surgery_hazard_multiplier_cumulative = surgery_refractory / surgery_naive,
+    surgery_cumulative_n_cycles = 26  # ~1 year (52 weeks) = 26 native 2-week cycles
   )
 }
 
@@ -151,7 +187,21 @@ apply_refractory_multiplier_induction <- function(induction_row, response_multip
 #' Surgery row's 0.868 -> Remission). Rows without a Remission entry (e.g. Death's absorbing
 #' self-loop) are untouched. Row sums are preserved exactly (mass moved column-to-column within
 #' the same row, nothing added or removed).
-apply_refractory_multiplier_maintenance <- function(m, cumulative_multiplier, cumulative_n_cycles) {
+#'
+#' `surgery_hazard_multiplier_cumulative`/`surgery_cumulative_n_cycles = NULL` (default): no
+#' surgery adjustment, byte-identical to this function's pre-2026-08-05 behaviour. Passing both
+#' additionally elevates each row's Surgery-column probability, run AFTER the Remission/Mild step
+#' above, using the SAME cumulative-to-per-cycle conversion and age_adjust_matrix()'s own
+#' proportional-rescale mechanic (R/utils/transition_matrix.R) -- every other column in the row,
+#' including the just-adjusted Remission/Mild and Death, is shrunk by
+#' `(1 - new_surgery) / (1 - old_surgery)` so the row still sums to 1. Rows with a zero baseline
+#' Surgery probability are left at zero (0 * multiplier = 0), matching the Remission step's own
+#' "nothing to adjust" convention. **This multiplier is a deliberate upper-bound/conservable
+#' proxy, not a matched point estimate** -- see this file's own module header
+#' ("Surgery hazard: sourced, but a genuinely imperfect proxy") before passing a non-NULL value.
+apply_refractory_multiplier_maintenance <- function(m, cumulative_multiplier, cumulative_n_cycles,
+                                                     surgery_hazard_multiplier_cumulative = NULL,
+                                                     surgery_cumulative_n_cycles = NULL) {
   stopifnot("Remission" %in% colnames(m), "Mild" %in% colnames(m))
   per_cycle_multiplier <- cumulative_multiplier ^ (1 / cumulative_n_cycles)
   out <- m
@@ -162,5 +212,19 @@ apply_refractory_multiplier_maintenance <- function(m, cumulative_multiplier, cu
     out[i, "Remission"] <- new_rem
     out[i, "Mild"] <- out[i, "Mild"] + (old_rem - new_rem)
   }
+
+  if (!is.null(surgery_hazard_multiplier_cumulative)) {
+    stopifnot(!is.null(surgery_cumulative_n_cycles), "Surgery" %in% colnames(m))
+    per_cycle_surgery_multiplier <- surgery_hazard_multiplier_cumulative ^ (1 / surgery_cumulative_n_cycles)
+    for (i in seq_len(nrow(out))) {
+      old_surgery <- out[i, "Surgery"]
+      if (old_surgery <= 0 || old_surgery >= 1) next
+      new_surgery <- min(old_surgery * per_cycle_surgery_multiplier, 1)
+      scale <- (1 - new_surgery) / (1 - old_surgery)
+      out[i, ] <- out[i, ] * scale
+      out[i, "Surgery"] <- new_surgery
+    }
+  }
+
   out
 }

@@ -29,6 +29,18 @@ test_that("load_refractory_multipliers reproduces the sourced UNITI-1/UNITI-2 ra
   expect_true(m$maintenance_remission_multiplier_cumulative < 1)
 })
 
+test_that("load_refractory_multipliers reproduces the sourced surgery-hazard rates exactly (upper-bound proxy)", {
+  m <- load_refractory_multipliers(RAW_DIR)
+  # data/raw/refractory_surgery_hazard_multiplier.csv: SOJOURN 11.6% (naive) vs. Kassouri et al.
+  # 2020 23.5% (double-biologic-failure, a MORE severe population than this project's refractory
+  # scenario) -- a deliberate upper-bound proxy, documented as such in that file's own header.
+  expect_equal(m$surgery_hazard_multiplier_cumulative, 0.235 / 0.116)
+  expect_equal(m$surgery_cumulative_n_cycles, 26)
+  # Surgery hazard is elevated (>1), the opposite direction from the response/remission
+  # multipliers (<1) -- refractory disease makes surgery MORE likely, not less.
+  expect_true(m$surgery_hazard_multiplier_cumulative > 1)
+})
+
 test_that("apply_refractory_multiplier_induction returns a valid probability row that sums to 1", {
   induction <- load_published_induction(RAW_DIR)
   mult <- load_refractory_multipliers(RAW_DIR)
@@ -78,6 +90,58 @@ test_that("apply_refractory_multiplier_maintenance preserves row-stochasticity f
     other_cols <- setdiff(colnames(m), c("Remission", "Mild"))
     expect_equal(adj[, other_cols], m[, other_cols])
   }
+})
+
+test_that("apply_refractory_multiplier_maintenance's surgery_hazard_multiplier_cumulative = NULL default is byte-identical to omitting it", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  mult <- load_refractory_multipliers(RAW_DIR)
+  for (tx in COMPARATOR_THERAPIES) {
+    m <- matrices[[tx]]
+    without_arg <- apply_refractory_multiplier_maintenance(m, mult$maintenance_remission_multiplier_cumulative,
+                                                            mult$maintenance_cumulative_n_cycles)
+    explicit_null <- apply_refractory_multiplier_maintenance(m, mult$maintenance_remission_multiplier_cumulative,
+                                                              mult$maintenance_cumulative_n_cycles,
+                                                              surgery_hazard_multiplier_cumulative = NULL,
+                                                              surgery_cumulative_n_cycles = NULL)
+    expect_equal(explicit_null, without_arg)
+  }
+})
+
+test_that("apply_refractory_multiplier_maintenance's surgery-hazard step preserves row-stochasticity and only ever raises Surgery", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  mult <- load_refractory_multipliers(RAW_DIR)
+  for (tx in COMPARATOR_THERAPIES) {
+    m <- matrices[[tx]]
+    adj <- apply_refractory_multiplier_maintenance(
+      m, mult$maintenance_remission_multiplier_cumulative, mult$maintenance_cumulative_n_cycles,
+      surgery_hazard_multiplier_cumulative = mult$surgery_hazard_multiplier_cumulative,
+      surgery_cumulative_n_cycles = mult$surgery_cumulative_n_cycles
+    )
+    expect_equal(unname(rowSums(adj)), rep(1, nrow(adj)), tolerance = 1e-9)
+    expect_true(all(adj >= -1e-12 & adj <= 1 + 1e-12))
+    # Surgery can only rise (or stay at 0, for rows with no baseline surgery probability at all) --
+    # the multiplier is > 1 by construction (surgery_hazard_multiplier_cumulative > 1).
+    expect_true(all(adj[, "Surgery"] >= m[, "Surgery"] - 1e-12))
+    # Rows with zero baseline Surgery probability are untouched by the surgery step specifically
+    # (0 * multiplier = 0 -- nothing to elevate, no rescale triggered).
+    zero_surgery_rows <- which(m[, "Surgery"] <= 0)
+    if (length(zero_surgery_rows) > 0) {
+      expect_equal(adj[zero_surgery_rows, "Surgery"], m[zero_surgery_rows, "Surgery"])
+    }
+  }
+})
+
+test_that("apply_refractory_multiplier_maintenance requires surgery_cumulative_n_cycles whenever a surgery multiplier is passed", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  mult <- load_refractory_multipliers(RAW_DIR)
+  m <- matrices[["UST"]]
+  expect_error(
+    apply_refractory_multiplier_maintenance(
+      m, mult$maintenance_remission_multiplier_cumulative, mult$maintenance_cumulative_n_cycles,
+      surgery_hazard_multiplier_cumulative = mult$surgery_hazard_multiplier_cumulative
+      # surgery_cumulative_n_cycles omitted -- should error, not silently divide by NULL
+    )
+  )
 })
 
 test_that("run_comparator_arm_lifetime(refractory = FALSE) is byte-identical to the pre-existing default", {

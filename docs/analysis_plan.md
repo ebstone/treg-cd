@@ -173,12 +173,27 @@ why). Applied to UST/IFX/ADA's own induction and maintenance matrices only; CT's
 Treg's own parameterisation are unaffected (Treg's reference clinical programme is already a
 refractory population, per §5.1, so nothing about it needs adjusting for this scenario).
 
-**Explicitly not included in this pass, a real flagged gap, not an oversight**: elevated surgery
-hazard (the other half of §5.2's own recommendation). No equivalently clean paired
-refractory-vs-naive surgery-rate data was found in the same trial programme in the time available;
-a future pass could source one separately (e.g. from a dedicated post-anti-TNF-failure surgical
-cohort) rather than reusing UNITI's own surgery data, which the induction trials weren't powered
-or designed to report by prior-treatment-failure subgroup.
+**Elevated surgery hazard (the other half of §5.2's own recommendation) added 2026-08-05, same
+day, as a deliberately imperfect but sourced proxy — not silently dropped.** No equivalently clean
+paired refractory-vs-naive surgery-rate data exists: UNITI-1/UNITI-2 (an 8-week induction trial
+pair) weren't powered or designed to report surgery by subgroup, and an extensive subsequent
+search of real-world bio-naive-vs-bio-experienced cohorts (Parra et al. 2022, the ICC registry,
+several others) found the same gap — these report clinical/endoscopic remission by that split,
+not surgery. What IS available (`data/raw/refractory_surgery_hazard_multiplier.csv`) is two
+separate studies at two different severity tiers: SOJOURN's 11.6% one-year cumulative surgery
+incidence in biologic-naive ustekinumab-treated patients (Vu et al. 2023, *BMC Gastroenterol*),
+and Kassouri et al. 2020's (*Dig Liver Dis*) 23.5% surgery rate at week 48 in patients who had
+already failed anti-TNF **and** a second-line biologic — i.e. starting a *third* line, a more
+severe population than this project's own refractory scenario (UNITI-1-equivalent: single
+anti-TNF failure, starting a *second* line). Ratio-ing these two gives a 2.03× multiplier used as
+a **deliberate upper-bound/conservative proxy, not a matched point estimate** — Eric's own
+instruction (2026-08-05) given the population-severity mismatch, rather than searching
+indefinitely for a better-matched source that may not exist in the published literature. Converted
+from its ~1-year cumulative figure to a per-2-week-cycle multiplier the same way as the maintenance
+remission multiplier, and applied via `apply_refractory_multiplier_maintenance()`'s optional
+surgery-hazard step (`R/utils/refractory_multipliers.R`) — every row's Surgery-column probability
+is elevated, other columns rescaled proportionally (the same mechanic `age_adjust_matrix()` already
+uses for installing a new Death probability), so every row still sums to 1.
 
 **Result, 6.15-year horizon** (`output/tables/refractory_scenario_results.csv`,
 `analysis/run_full_analysis.R` step 9): QALYs fall for all three comparators under the refractory
@@ -489,7 +504,7 @@ One-way analysis across all parameters in Section 7.1 over their credible ranges
 |---|---|---|
 | S1 | 2-year maintenance cap: on vs. off | Decision 1; materially moves the result |
 | S2 | ADA included vs. excluded | Decision 2 |
-| S3 | Biologic-naïve vs. refractory population | Decision 3 — **implemented 2026-08-05, §5.4**; response/remission multipliers only, run at the 6.15-year horizon (`run_refractory_scenario()`, `output/tables/refractory_scenario_results.csv`); surgery-hazard elevation not yet sourced |
+| S3 | Biologic-naïve vs. refractory population | Decision 3 — **implemented 2026-08-05, §5.4**; response/remission and surgery-hazard multipliers, run at the 6.15-year horizon (`run_refractory_scenario()`, `output/tables/refractory_scenario_results.csv`); surgery hazard is a deliberate upper-bound proxy (population-severity mismatch), not a matched estimate |
 | S4 | Cure-fraction anchor: optimistic / moderate / pessimistic / null | Decision 4 |
 | S5 | Time horizon: lifetime / 10-year / 6.15-year | Tests the truncation critique directly and reproduces the current draft — **lifetime arm implemented 2026-08-05, §4.3**; deterministic base case and headroom frontier only (PSA/EVPI/EVPPI/probabilistic EJP still 6.15-year) |
 | S6 | Treg dosing: 1 dose vs. 2 doses | Current draft assumes 2; the reference clinical programme is a single infusion |
