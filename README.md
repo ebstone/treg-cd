@@ -329,10 +329,14 @@ column proportionally to compensate — the same mechanic `age_adjust_matrix()` 
 installing a new Death probability, so row-stochasticity is preserved exactly.
 
 **Result, 6.15-year horizon:** QALYs fall for all three comparators under the refractory
-adjustment, as expected; total cost also falls for all three, a real (not a bug) mechanical
-consequence of more frequent CT-switching being cheaper than continuing branded-biologic therapy
-at this project's current CT/biologic price gap, which the (small) surgery-hazard elevation only
-partially offsets — net NMB effect is small and mixed by comparator/WTP threshold.
+adjustment, as expected. **Correction, 2026-08-05** (caught re-verifying `output/tables/
+refractory_scenario_results.csv` after a fresh full run — an earlier version of this note claimed
+cost falls for all three, checked only UST closely and wrongly generalised): UST and ADA cost
+both fall ($43,460→$40,172 and $41,467→$40,170, a real, not-a-bug mechanical consequence of more
+frequent CT-switching being cheaper than continuing branded-biologic therapy), but **IFX rises
+slightly** ($38,808→$39,054) — plausibly because IFX's own naive-population parameters expose a
+smaller share of its cohort to that same CT-switching saving, not independently verified by a full
+decomposition. Net NMB effect is small and mixed by comparator/WTP threshold either way.
 `docs/analysis_plan.md` §5.4/§10.3 updated. Full test suite: 555 assertions (up from 474), 0
 failures.
 

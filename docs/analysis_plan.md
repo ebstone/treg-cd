@@ -197,12 +197,18 @@ uses for installing a new Death probability), so every row still sums to 1.
 
 **Result, 6.15-year horizon** (`output/tables/refractory_scenario_results.csv`,
 `analysis/run_full_analysis.R` step 9): QALYs fall for all three comparators under the refractory
-adjustment, as expected (worse response/remission). Total cost also falls, for all three — a real,
-non-obvious mechanical consequence, not a bug: patients who fail to achieve or hold remission
-switch to the CT track more often, and CT is markedly cheaper than continuing branded-biologic
-therapy, so the cost saved by more frequent CT-switching outweighs the extra cost of more relapse/
-non-response cycles at this project's current CT/biologic price gap. Net effect on NMB is small
-and mixed by comparator/WTP in this pass's numbers — worth a sentence in Results, not a headline
+adjustment, as expected (worse response/remission). **Correction, 2026-08-05**: an earlier version
+of this note claimed total cost falls for all three comparators too — checked only UST closely at
+the time and wrongly generalised. The actual, verified figures: UST falls ($43,460 → $40,172, a
+real, non-obvious mechanical consequence, not a bug — patients who fail to hold remission switch
+to the cheaper CT track more often, and that saving outweighs the extra cost of more relapse/
+non-response cycles) and ADA falls similarly ($41,467 → $40,170); **IFX rises slightly**
+($38,808 → $39,054, +0.6%) — the same CT-switching mechanism doesn't dominate for IFX, plausibly
+because IFX's own naive-population parameters (higher induction remission share, a stickier
+Remission-retention probability than UST's) mean a smaller fraction of its cohort is exposed to
+the CT-switch saving in the first place; not independently verified by a full decomposition, so
+treat as a plausible explanation, not a confirmed mechanism. Net effect on NMB is small and mixed
+by comparator/WTP in this pass's numbers regardless — worth a sentence in Results, not a headline
 finding on its own.
 
 ---
