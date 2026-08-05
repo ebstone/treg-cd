@@ -502,20 +502,53 @@ One-way analysis across all parameters in Section 7.1 over their credible ranges
 
 | # | Scenario | Why it must be run |
 |---|---|---|
-| S1 | 2-year maintenance cap: on vs. off | Decision 1; materially moves the result |
-| S2 | ADA included vs. excluded | Decision 2 |
+| S1 | 2-year maintenance cap: on vs. off | Decision 1; materially moves the result — **implemented 2026-08-05, §10.4**; `run_scenario_s1_cap()`, `output/tables/scenario_s1_cap.csv` |
+| S2 | ADA included vs. excluded | Decision 2 — **implemented 2026-08-05, §10.4**; `run_scenario_s2_comparator_set()`/`run_scenario_s2_headroom_at_sourced_price()`. Notable finding: excluding ADA changes NOTHING at the sourced price — IFX is the "next-best comparator" (§4.2) with or without ADA in the set, so pi* is identical either way |
 | S3 | Biologic-naïve vs. refractory population | Decision 3 — **implemented 2026-08-05, §5.4**; response/remission and surgery-hazard multipliers, run at the 6.15-year horizon (`run_refractory_scenario()`, `output/tables/refractory_scenario_results.csv`); surgery hazard is a deliberate upper-bound proxy (population-severity mismatch), not a matched estimate |
-| S4 | Cure-fraction anchor: optimistic / moderate / pessimistic / null | Decision 4 |
-| S5 | Time horizon: lifetime / 10-year / 6.15-year | Tests the truncation critique directly and reproduces the current draft — **lifetime arm implemented 2026-08-05, §4.3**; deterministic base case and headroom frontier only (PSA/EVPI/EVPPI/probabilistic EJP still 6.15-year) |
-| S6 | Treg dosing: 1 dose vs. 2 doses | Current draft assumes 2; the reference clinical programme is a single infusion |
-| S7 | SDR utility = Remission vs. general-population | Locates how much of the cure's value is utility-driven |
+| S4 | Cure-fraction anchor: optimistic / moderate / pessimistic / null | Decision 4 — **implemented 2026-08-05, §10.4**; `run_cure_fraction_anchor_table()` reports the FULL pi ∈ {0,50,75,90%} × T ∈ {2,5,10,20,Inf yr} grid at Treg's sourced price, rather than one hand-picked (pi, T) pairing per label — deliberately, since the published analogs (§7.2) inform a plausible range, not a point estimate |
+| S5 | Time horizon: lifetime / 10-year / 6.15-year | Tests the truncation critique directly and reproduces the current draft — **lifetime arm implemented 2026-08-05, §4.3; full three-way comparison table implemented same day, §10.4** (`run_scenario_s5_horizon()`); deterministic base case only (PSA/EVPI/EVPPI/probabilistic EJP still 6.15-year at every horizon) |
+| S6 | Treg dosing: 1 dose vs. 2 doses | Current draft assumes 2; the reference clinical programme is a single infusion. **Not implemented** — needs new per-cycle-trace logic a one-time cost function can't provide (`treg_dose_cost()`'s own module header, R/04) |
+| S7 | SDR utility = Remission vs. general-population | Locates how much of the cure's value is utility-driven. **Not implemented** — needs sourcing US general-population utility norms |
 | S8 | Comparator pricing: **biosimilar-era pricing (base case, as of 2026-08-05) vs. originator/pre-biosimilar pricing (now the scenario)** | Section 4.2 — inverted from the original S8 framing; `load_drug_prices(pricing_basis = "originator_pre_biosimilar")` runs this scenario |
-| S9 | Perspective: healthcare sector vs. societal | Second Panel; favours durable therapy |
-| S10 | Discount rate: 3% / 0% / 1.5% / 5% | Discounting of one-time curative therapies is contested |
-| S11 | Relapse from SDR re-enters at Mild vs. M-SR | Minor; cheap to run |
-| S12 | Non-cured Treg = UST-equivalent vs. HR-advantaged | Tests the Section 6.2 recommendation |
+| S9 | Perspective: healthcare sector vs. societal | Second Panel; favours durable therapy. **Not implemented** — needs the Manceur et al. 2020 productivity/absenteeism cost data actually wired into R/04, not just referenced here |
+| S10 | Discount rate: 3% / 0% / 1.5% / 5% | Discounting of one-time curative therapies is contested — **implemented 2026-08-05, §10.4**; `run_scenario_s10_discount_rate()`, `output/tables/scenario_s10_discount_rate.csv` |
+| S11 | Relapse from SDR re-enters at Mild vs. M-SR | Minor; cheap to run — **implemented 2026-08-05, §10.4**; `run_scenario_s11_relapse_destination()`. Evaluated at pi > 0 (pi=0 shows no difference by construction — no one is ever in SDR to relapse); effect is real but small (a few hundredths of a QALY at pi=0.9) |
+| S12 | Non-cured Treg = UST-equivalent vs. HR-advantaged | Tests the Section 6.2 recommendation. **Not implemented** — needs a sourced/assumed hazard ratio and new matrix-adjustment mechanics; no such parameter exists in this codebase yet |
 
 Twelve structural scenarios is more than can be reported in 6,000 words. Recommend S1, S3, S4, S5 and S8 in the main text; the remainder in Electronic Supplementary Material with a summary table in the main text.
+
+### 10.4 Mechanical scenarios (S1, S2, S4, S5, S10, S11): implementation note (2026-08-05)
+
+Six of the twelve scenarios needed no new sourcing and little-to-no new mechanics — every
+underlying toggle (`apply_cap`, a comparator subset, `annual_rate`, `relapse_destination`,
+`HORIZON_CYCLES_10YR`) either already existed in `R/05_deterministic_results.R` or was a one-line,
+backward-compatible parameter addition there. `R/09_scenarios.R` (new) is pure orchestration —
+run the existing base case under each named scenario setting and stack the results with a
+labelled column — plus one genuinely new function, `run_cure_fraction_anchor_table()` (S4), which
+reports Treg's own outcomes at named (π, T) points against its sourced price (a different
+question from what `headroom_pi_star()`/`headroom_frontier_by_duration()` already answer: those
+solve for the price/π a target would require, not "what happens at π = X"). `analysis/
+run_scenario_analyses.R` is the entry point, producing one CSV per scenario in `output/tables/`.
+
+Two findings worth surfacing, not just the mechanics:
+
+- **S2 (ADA in/out) changes nothing at Treg's sourced price.** IFX is the "next-best comparator"
+  (§4.2) whether or not ADA is in the comparator set — pi* is bit-for-bit identical
+  (`scenario_s2_headroom_at_sourced_price.csv`) either way. Decision 2's own scenario, worth
+  reporting precisely because the null result is itself informative: this project's EJP
+  conclusions don't depend on whether ADA is included.
+- **S11 (relapse destination) is real but small.** At π = 0 the two settings are, correctly,
+  identical (no cured patients exist to relapse at all); at π = 0.9 the QALY gap between
+  relapsing to Mild vs. Moderate-Severe Responder is on the order of a few thousandths of a QALY
+  — directionally correct (Mild is the better state) but small enough that this scenario is
+  reportable-for-completeness rather than headline-moving.
+
+S6 (Treg 2-dose), S7 (SDR utility = general-population), S9 (societal perspective) and S12
+(non-cured Treg = HR-advantaged) remain **not implemented** — each needs either new sourcing
+(S7's utility norms, S9's productivity/absenteeism cost data) or new mechanics this codebase
+doesn't have anywhere yet (S6's per-cycle multi-dose trace logic, S12's hazard-ratio matrix
+adjustment) — see `R/09_scenarios.R`'s own module header for the detail on each, not repeated
+here to avoid the two copies drifting out of sync.
 
 ---
 

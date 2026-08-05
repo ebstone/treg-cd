@@ -296,6 +296,13 @@ treg_price_dependent_dose_cost <- function(price_usd, cyclophosphamide_dose_mg =
 #' run_comparator_arm_lifetime()'s equivalent parameter, forwarded to attach_treg_costs_utilities()
 #' (which applies it identically to both the pre-landmark/non-cured Markov portion and the SDR
 #' portion -- R/04's own docstring on that function).
+#'
+#' `relapse_destination = "Mild"` (default, matching R/03_cure_fraction_module.R's own default --
+#' fully backward compatible): the health state a relapsed SDR patient re-enters. Scenario S11
+#' (analysis_plan.md §10.3) is `relapse_destination = "Moderate-Severe Responder"` -- the only
+#' other value R/03's `run_treg_arm()`/`run_treg_arm_with_mortality()` already accept; this
+#' parameter just exposes their existing argument through this wrapper rather than adding new
+#' mechanics.
 run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices,
                                    weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                    annual_rate = 0.03, landmark_cycle = 28, cap_cycle = 52,
@@ -303,7 +310,8 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
                                    observation_stay_cost_usd = 0, raw_dir = "data/raw",
                                    proc_dir = "data/processed", utilities = NULL,
                                    induction_data = NULL, prices = NULL, baseline_age = NULL,
-                                   life_table = NULL, half_cycle_correction = TRUE) {
+                                   life_table = NULL, half_cycle_correction = TRUE,
+                                   relapse_destination = "Mild") {
   stopifnot(all(c("UST", "CT") %in% names(matrices)))
 
   if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
@@ -314,14 +322,15 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
     arm <- run_treg_arm(
       matrices[["UST"]], matrices[["CT"]], split$initial_on_biologic, split$initial_on_ct, n_cycles,
       pi_sdr = pi_sdr, relapse_hazard_annual = relapse_hazard_annual, landmark_cycle = landmark_cycle,
-      cap_cycle = cap_cycle, apply_cap = apply_cap
+      cap_cycle = cap_cycle, apply_cap = apply_cap, relapse_destination = relapse_destination
     )
   } else {
     arm <- run_treg_arm_with_mortality(
       matrices[["UST"]], matrices[["CT"]], split$initial_on_biologic, split$initial_on_ct, n_cycles,
       pi_sdr = pi_sdr, relapse_hazard_annual = relapse_hazard_annual, baseline_age = baseline_age,
       landmark_cycle = landmark_cycle, cap_cycle = cap_cycle, apply_cap = apply_cap,
-      life_table = life_table, raw_dir = raw_dir, cycle_weeks = cycle_weeks
+      life_table = life_table, raw_dir = raw_dir, cycle_weeks = cycle_weeks,
+      relapse_destination = relapse_destination
     )
   }
 
@@ -374,19 +383,25 @@ best_comparator_nmb <- function(comparator_summaries, wtp_usd) {
 #' `baseline_age = NULL` (default): 6.15-year/10-year horizons, exactly as before this parameter
 #' existed (module header). Pass ASSUMED_PATIENT_AGE_YEARS with `n_cycles = HORIZON_CYCLES_LIFETIME`
 #' for the lifetime-horizon base case (analysis/run_full_analysis.R does this explicitly).
+#'
+#' `comparator_therapies = COMPARATOR_THERAPIES` (default, fully backward compatible): which
+#' biologics to run as comparator arms. Scenario S2 (analysis_plan.md §10.3, Decision 2) is
+#' `comparator_therapies = c("UST", "IFX")` -- ADA excluded -- without needing a separate
+#' function; CT and TREG are unaffected either way (CT is not itself a comparator arm, and TREG's
+#' own non-cured track is UST-equivalent regardless of which arms this call reports).
 run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                            cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
                            raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,
-                           life_table = NULL) {
+                           life_table = NULL, comparator_therapies = COMPARATOR_THERAPIES) {
   matrices <- build_all_transition_matrices(raw_dir)
 
   comparator_summaries <- stats::setNames(
-    lapply(COMPARATOR_THERAPIES, function(tx) {
+    lapply(comparator_therapies, function(tx) {
       run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
                                    apply_cap, cap_cycle, raw_dir, proc_dir,
                                    baseline_age = baseline_age, life_table = life_table)
     }),
-    COMPARATOR_THERAPIES
+    comparator_therapies
   )
 
   treg_price <- load_treg_dose_acquisition_cost(proc_dir)
@@ -566,19 +581,23 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
 #' independent), rather than once per price point.
 #' `baseline_age`/`life_table = NULL` (default): same meaning as headroom_pi_star()'s equivalent
 #' parameters, threaded through unchanged.
+#' `comparator_therapies = COMPARATOR_THERAPIES` (default, backward compatible): same meaning as
+#' run_base_case()'s equivalent parameter -- scenario S2 (ADA excluded) passes
+#' `c("UST", "IFX")` here to see how the "next-best comparator" (best_comparator_nmb(), used
+#' inside headroom_pi_star()) and therefore pi* shift when ADA isn't in the comparator set.
 headroom_frontier <- function(price_grid_usd, wtp_usd, relapse_hazard_annual = 0,
                                n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
                                raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,
-                               life_table = NULL) {
+                               life_table = NULL, comparator_therapies = COMPARATOR_THERAPIES) {
   matrices <- build_all_transition_matrices(raw_dir)
   comparator_summaries <- stats::setNames(
-    lapply(COMPARATOR_THERAPIES, function(tx) {
+    lapply(comparator_therapies, function(tx) {
       run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
                                    apply_cap, cap_cycle, raw_dir, proc_dir,
                                    baseline_age = baseline_age, life_table = life_table)
     }),
-    COMPARATOR_THERAPIES
+    comparator_therapies
   )
 
   rows <- lapply(price_grid_usd, function(price) {

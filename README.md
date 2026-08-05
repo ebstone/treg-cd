@@ -336,6 +336,24 @@ partially offsets — net NMB effect is small and mixed by comparator/WTP thresh
 `docs/analysis_plan.md` §5.4/§10.3 updated. Full test suite: 555 assertions (up from 474), 0
 failures.
 
+**Six mechanical structural scenarios implemented (2026-08-05)** — S1, S2, S4, S5, S10, S11
+(`docs/analysis_plan.md` §10.3/§10.4). New `R/09_scenarios.R` is orchestration, not new
+simulation: every underlying toggle (`apply_cap`, a comparator-therapy subset, `annual_rate`,
+`relapse_destination`, `HORIZON_CYCLES_10YR`) already existed or was a one-line, backward-
+compatible parameter addition to `run_base_case()`/`headroom_frontier()`/`run_treg_arm_lifetime()`.
+The one genuinely new function, `run_cure_fraction_anchor_table()` (S4), reports Treg's own
+outcomes at named π ∈ {0,50,75,90%} × relapse-duration T ∈ {2,5,10,20,∞ yr} points against its
+sourced price — the full grid, not one hand-picked pairing per optimistic/moderate/pessimistic
+label, since the published analogs inform a plausible range rather than a point estimate.
+`analysis/run_scenario_analyses.R` is the entry point (`output/tables/scenario_s*.csv`).
+**Two findings worth noting:** S2 (ADA in/out) changes nothing at Treg's sourced price — IFX is
+the next-best comparator either way, so pi* is bit-for-bit identical; S11 (SDR relapse
+destination) is real but small — a few thousandths of a QALY at π=0.9, correctly signed but not
+headline-moving. S6 (Treg 2-dose), S7 (SDR utility = general-population), S9 (societal
+perspective) and S12 (non-cured Treg = HR-advantaged) remain **not implemented** — each needs new
+sourcing or new mechanics not yet built (see `R/09_scenarios.R`'s own module header). Full test
+suite: 602 assertions (up from 555), 0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,
