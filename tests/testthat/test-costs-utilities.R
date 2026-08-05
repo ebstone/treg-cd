@@ -116,13 +116,38 @@ test_that("attach_treg_costs_utilities integrates cleanly against a real, small 
 
 test_that("load_dosing_schedule and load_drug_prices read the real sourced files without error", {
   schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  # Default pricing_basis = "biosimilar_2026" -- the base case as of the biosimilar-repricing fix
+  # (2026-08-05, docs/model_audit_v6.md; docs/analysis_plan.md §15/§4.2; S8, §10.3): EJP at pi=0
+  # collapses to essentially the comparator drug spend displaced, so comparator prices are the
+  # single largest lever on every headline number, and originator (pre-biosimilar) pricing was
+  # confirmed to be the wrong base case for a therapy reaching an adoption decision well after
+  # ustekinumab/infliximab/adalimumab biosimilars matured.
   prices <- load_drug_prices(repo_root_relative("data", "raw"))
   expect_setequal(schedule$therapy, c("UST", "IFX", "ADA"))
+  expect_equal(prices$ust_induction_usd_per_mg, 4.5375)
+  expect_equal(prices$ust_maintenance_usd_per_mg, 60.8499)
+  expect_equal(prices$ifx_usd_per_mg, 2.6803)
+  expect_equal(prices$ada_usd_per_mg, 14.2482)
+  expect_equal(prices$iv_administration_usd, 57.9)  # unrelated product, not repriced by this fix
+})
+
+test_that("load_drug_prices(pricing_basis = 'originator_pre_biosimilar') reproduces this project's exact pre-fix figures", {
+  # S8's inversion (analysis_plan.md §10.3): originator pricing is now the comparability-with-
+  # Aliyev scenario, not the base case -- these are the EXACT values load_drug_prices() returned
+  # before the biosimilar-repricing fix, retained verbatim as a named alternate basis, not
+  # re-sourced. A regression guard: if this ever silently drifts, S8 stops being reproducible.
+  prices <- load_drug_prices(repo_root_relative("data", "raw"), pricing_basis = "originator_pre_biosimilar")
   expect_equal(prices$ust_induction_usd_per_mg, 12.808)
   expect_equal(prices$ust_maintenance_usd_per_mg, 155.883)
   expect_equal(prices$ifx_usd_per_mg, 3.109)
   expect_equal(prices$ada_usd_per_mg, 84.1678)
   expect_equal(prices$iv_administration_usd, 57.9)
+})
+
+test_that("load_drug_prices errors loudly on an unknown pricing_basis rather than silently returning nothing", {
+  expect_error(
+    load_drug_prices(repo_root_relative("data", "raw"), pricing_basis = "not_a_real_basis")
+  )
 })
 
 test_that("ADA's sourced dosing schedule is correct", {

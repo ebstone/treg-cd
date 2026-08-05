@@ -20,13 +20,16 @@
 #    upper_bound) rows for each of Remission/Mild:Remission/M-SR:Mild/M-S:M-SR/Surgery:M-SR --
 #    the exact bounds the v6 workbook itself used, not invented ones. Each is drawn independently
 #    per iteration, then chained multiplicatively (Mild = Remission x ratio, M-SR = Mild x ratio,
-#    M-S = M-SR x ratio, Surgery = M-SR x ratio -- verified against model_health_utilities.csv's
-#    own arithmetic; see A16, docs/model_audit_v6.md, for a real discrepancy found while doing
-#    this verification: model_health_utilities.csv's actual Remission value, 0.9554, does not
-#    match the 0.82 base value this same PSA file cites for the same quantity. That does NOT
-#    block sampling here -- a Uniform only needs correct bounds, not a correct centre -- but it
-#    is a real, unresolved gap between the deterministic base case and the cited literature
-#    source, flagged, not silently picked around.
+#    M-S = M-SR x ratio, Surgery = M-SR x ratio) -- originally verified against
+#    model_health_utilities.csv's own arithmetic while building this module, which is how A16
+#    (docs/model_audit_v6.md) was first found: that file's Remission value, 0.9554, did not match
+#    the 0.82 base value this same PSA file cites for the same quantity. **A16 is now resolved**
+#    (2026-08-05) -- 0.9554 was a stray live PSA draw captured in the workbook snapshot, not a
+#    parameter; model_health_utilities.csv is retired as a base-case input and
+#    R/04_costs_utilities.R's load_health_state_utilities() now derives the deterministic vector
+#    from this same PSA file's base values, via the identical chain this function already samples
+#    around -- so the deterministic base case and this module's PSA draws are now the same central
+#    value by construction, not two independently-maintained figures.
 # 2. **Treg's acquisition price** (item 12). `model_psa_parameter_distributions.csv`'s
 #    `psa_cost_treg_dose` row gives mean $19,917 and an `alpha_or_sd` column of 5080.87 -- verified
 #    here to be a standard deviation, not a Gamma shape parameter despite the column's name:

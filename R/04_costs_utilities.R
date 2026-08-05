@@ -94,6 +94,43 @@
 # (160mg then 80mg), summed from two separate schedule rows rather than one row x n_doses like
 # IFX's three identical doses.
 #
+# ---- Biosimilar re-pricing (2026-08-05) -- base case moved off originator pricing --------------
+#
+# The three points above describe the ORIGINAL 2026-08-04 sourcing pass; as of 2026-08-05
+# (docs/model_audit_v6.md; docs/analysis_plan.md §15/§4.2; S8, §10.3) that pricing is no longer the
+# base case. At pi=0 the Treg arm collapses to a one-time-cost UST-equivalent product, so the EJP
+# is essentially the discounted comparator drug spend displaced -- comparator acquisition price is
+# therefore the single largest lever on every headline number in this project, and originator
+# (pre-biosimilar) ASP/NADAC pricing was the wrong base case for a therapy that would reach an
+# adoption decision well after ustekinumab, infliximab and adalimumab biosimilars matured (nine
+# ustekinumab biosimilars launched in the US through 2025-2026 at reported 80-99% list-price
+# discounts; infliximab's biosimilar market has been established for years).
+#
+# `load_drug_prices()` below now takes a `pricing_basis` argument (default `"biosimilar_2026"`),
+# and `data/raw/cms_asp_and_hcup_cost_sources.csv` carries two rows per drug accordingly:
+#   - **UST induction**: median CMS Part B ASP across 6 ustekinumab biosimilar Q-codes (a real
+#     current figure, not an estimate) -- $4.5375/mg, vs. $12.808/mg originator.
+#   - **UST maintenance**: J3357 (the SC/maintenance HCPCS code the original sourcing pass used) no
+#     longer carries a Part B ASP payment limit AT ALL in the current fee schedule -- independent,
+#     unplanned confirmation that self-administered SC dosing isn't really a Part B ASP product,
+#     the same reasoning point 3 above already applied to ADA. Unlike ADA, NADAC does not yet list
+#     any ustekinumab biosimilar NDC either, so this row is a DERIVED PROXY (the UST induction
+#     biosimilar:originator discount ratio applied to the previous SC originator ASP figure), not a
+#     directly observed price -- see the CSV row's own note for the full chain and its limitation.
+#   - **IFX**: median across 3 infliximab biosimilar Q-codes -- $2.6803/mg, a modest ~14% cut from
+#     originator ($3.1041/mg the same quarter), consistent with a market that converged years ago
+#     rather than one still in an early price war (contrast UST's much larger cut above).
+#   - **ADA**: median CMS NADAC across 4 adalimumab biosimilar 40mg-pen NDCs -- $14.2482/mg, an
+#     ~83% cut from the brand-only NADAC figure ($84.1678/mg) point 3 above sourced; same NADAC
+#     methodology as before, only the product mix (brand-only -> biosimilar-inclusive) changes.
+# All four biosimilar-era figures and their full derivations are in the CSV's own rows/notes, not
+# repeated here. The pre-fix figures are retained verbatim under `pricing_basis =
+# "originator_pre_biosimilar"` -- S8 (analysis_plan.md §10.3) inverts to that as the
+# comparability-with-Aliyev scenario; pass it to `load_drug_prices()` and thread the resulting
+# `prices` list into `run_comparator_arm_lifetime()`/`run_treg_arm_lifetime()`'s own `prices`
+# override argument (R/05_deterministic_results.R) to run it -- no separate scenario-running
+# harness exists yet for S1-S12 collectively (R/05's own header), and this fix doesn't add one.
+#
 # **Not applied to Treg's non-cured track.** attach_treg_costs_utilities() reuses UST's own
 # maintenance matrix for Treg's non-cured patients (efficacy-equivalent to UST, analysis_plan.md
 # §6.2) but that is an efficacy-only equivalence, not a claim that non-cured Treg patients are
@@ -236,24 +273,40 @@ load_dosing_schedule <- function(raw_dir = "data/raw") {
 }
 
 #' $/mg (or $/mg-equivalent) drug prices and the flat IV administration fee
-#' (data/raw/cms_asp_and_hcup_cost_sources.csv), keyed by HCPCS code so a code typo fails loudly
-#' rather than silently returning NA. UST/IFX prices are CMS ASP-methodology Part B payment
-#' limits; ada_usd_per_mg is a NADAC price instead (module header, point 3) -- same list,
-#' different methodology per drug, not an inconsistency to resolve here.
-load_drug_prices <- function(raw_dir = "data/raw") {
+#' (data/raw/cms_asp_and_hcup_cost_sources.csv).
+#'
+#' **Biosimilar re-pricing (2026-08-05, docs/model_audit_v6.md; docs/analysis_plan.md §15/§4.2;
+#' S8, §10.3).** UST/IFX/ADA each now carry TWO rows in the source file, distinguished by a
+#' `component`/`pricing_basis` pair rather than a single fixed HCPCS code: `"biosimilar_2026"` (the
+#' default, and now the base case -- current biosimilar-inclusive pricing, re-extracted at a single
+#' stated date) and `"originator_pre_biosimilar"` (this project's exact pre-fix figures, retained
+#' verbatim, unchanged -- the comparability-with-Aliyev scenario S8 inverts to). Pass
+#' `pricing_basis = "originator_pre_biosimilar"` to run that scenario; the two-argument
+#' `price_for_component()` closure below is what actually branches on it. Cyclophosphamide and the
+#' IV administration fee are unrelated products (not repriced by this fix) and keep the original
+#' fixed-HCPCS-code lookup (`price_for_code()`) -- a code typo there still fails loudly rather than
+#' silently returning NA, same discipline as before.
+load_drug_prices <- function(raw_dir = "data/raw", pricing_basis = "biosimilar_2026") {
   df <- utils::read.csv(file.path(raw_dir, "cms_asp_and_hcup_cost_sources.csv"), stringsAsFactors = FALSE)
-  price_for <- function(code) {
+
+  price_for_code <- function(code) {
     val <- df$payment_limit_usd_per_unit[df$hcpcs_code == code]
     stopifnot(length(val) == 1, !is.na(val))
     val
   }
+  price_for_component <- function(component_name) {
+    rows <- df[df$component == component_name & df$pricing_basis == pricing_basis, ]
+    stopifnot(nrow(rows) == 1, !is.na(rows$payment_limit_usd_per_unit))
+    rows$payment_limit_usd_per_unit
+  }
+
   list(
-    ust_induction_usd_per_mg = price_for("J3358"),
-    ust_maintenance_usd_per_mg = price_for("J3357"),
-    ifx_usd_per_mg = price_for("J1745"),
-    ada_usd_per_mg = price_for("J0135"),
-    cyclophosphamide_usd_per_mg = price_for("J9075"),
-    iv_administration_usd = price_for("96365")
+    ust_induction_usd_per_mg = price_for_component("UST induction"),
+    ust_maintenance_usd_per_mg = price_for_component("UST maintenance"),
+    ifx_usd_per_mg = price_for_component("IFX"),
+    ada_usd_per_mg = price_for_component("ADA"),
+    cyclophosphamide_usd_per_mg = price_for_code("J9075"),
+    iv_administration_usd = price_for_code("96365")
   )
 }
 
@@ -409,27 +462,56 @@ treg_dose_cost <- function(n_doses = 1, cyclophosphamide_dose_mg = 0, observatio
              + observation_stay_cost_usd)
 }
 
-# ---- Utilities (data/processed/model_health_utilities.csv) ------------------------------------
+# ---- Utilities (data/processed/model_psa_parameter_distributions.csv) -------------------------
+#
+# A16 fix (2026-08-05, docs/model_audit_v6.md): the deterministic utility vector used to be read
+# straight from model_health_utilities.csv, whose Remission figure (0.9554396356) turned out to be
+# a stray live PSA draw captured in the workbook snapshot, not a parameter -- four independent
+# lines of evidence (full-double-precision reproduction of the chain below off that one number;
+# every one of the five chained inputs sitting at a scattered, non-base percentile of its own
+# stated Uniform range; ~16 significant figures on all five, the signature of volatile
+# `=lo+RAND()*(hi-lo)` cells; and the fact that only 0.82, not 0.9554, reproduces the manuscript's
+# own published utility table -- see the resolution memo folded into A16 below and
+# docs/analysis_plan.md §15). model_health_utilities.csv is retired as a base-case input as a
+# result -- kept in the repo, unused, with a provenance note in its own header row and in
+# data/data_dictionary.md, not deleted (Data Availability Statement expectations: what a number
+# WAS, not just what it now is, should stay reconstructable).
+#
+# The deterministic vector below is now DERIVED, not read: Remission's base value (0.82) and the
+# four multiplicative ratios come from model_psa_parameter_distributions.csv's own `value` column
+# -- the same file, and the same Beta-re-parameterised-from-Uniform base values (analysis_plan.md
+# §7.1 items 19-20), that R/06_psa.R's sample_utility_chain_draws() already draws its Uniform
+# bounds from. Chaining here uses the identical arithmetic (Mild = Remission x ratio, M-SR = Mild
+# x ratio, M-S = M-SR x ratio, Surgery = M-SR x ratio) so the deterministic base case is, by
+# construction, the central draw of the PSA rather than a separately maintained figure that can
+# drift from it -- closing the actual root cause, not just this one instance of it (see
+# test-parameter-provenance.R).
 
-#' Named vector of per-state utility values. Source: model_health_utilities.csv (workbook
-#' extraction). Unlike the cost figures above, utilities aren't cycle-length- or
-#' drug-cost-entangled (a utility is "how good is this health state," not a per-dosing-interval
-#' charge), so no re-derivation concern applies -- safe to use as extracted. Deterministic
-#' base-case values only; PSA-time sampling from the underlying ratios
-#' (model_utility_ratios_and_psa.csv, analysis_plan.md §7.1 item 20) is R/06_psa.R's job, not
-#' this module's.
+#' Named vector of per-state utility values (deterministic base case), derived from
+#' model_psa_parameter_distributions.csv's sourced Remission base value and the four chained
+#' ratios -- see module section header above for why this is a derivation, not a file read, as of
+#' the A16 fix. Death is always 0 (not a row in the PSA file; no health-related utility applies).
 load_health_state_utilities <- function(proc_dir = "data/processed") {
-  df <- utils::read.csv(file.path(proc_dir, "model_health_utilities.csv"), stringsAsFactors = FALSE)
-  # Source file uses the workbook's abbreviated state names (Mod/Sev, Mod/Sev Resp); this
-  # project's canonical names are MAINTENANCE_STATES (R/00_derive_transition_probs.R). Mapped
-  # explicitly, not by row-order alignment, which would silently break if either file's row order
-  # ever changed.
-  name_map <- c(
-    "Mod/Sev" = "Moderate-Severe", "Mod/Sev Resp" = "Moderate-Severe Responder",
-    "Mild" = "Mild", "Remission" = "Remission", "Surgery" = "Surgery", "Death" = "Death"
+  df <- utils::read.csv(file.path(proc_dir, "model_psa_parameter_distributions.csv"), stringsAsFactors = FALSE)
+
+  #' One row's base `value`, by its `variable` label -- a code typo fails loudly (stopifnot) rather
+  #' than silently returning NA, same discipline as R/04's own load_drug_prices()/price_for().
+  value_for <- function(variable_name) {
+    val <- df$value[df$variable == variable_name]
+    stopifnot(length(val) == 1, !is.na(val))
+    val
+  }
+
+  remission <- value_for("Remission")
+  mild <- remission * value_for("Mild:Remission Ratio")
+  msr <- mild * value_for("M-SR:Mild Ratio")
+  ms <- msr * value_for("M-S:M-SR Ratio")
+  surgery <- msr * value_for("Surgery:M-SR Ratio")
+
+  c(
+    "Moderate-Severe" = ms, "Moderate-Severe Responder" = msr, "Mild" = mild,
+    "Remission" = remission, "Surgery" = surgery, "Death" = 0
   )
-  stopifnot(all(df$health_state %in% names(name_map)))
-  stats::setNames(df$utility_value, name_map[df$health_state])
 }
 
 # ---- Discounted per-trace QALYs and non-drug costs ---------------------------------------------

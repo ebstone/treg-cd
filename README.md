@@ -153,6 +153,37 @@ over COGS** output (P\* vs. the ten Ham-derived $4,979.19 manufacturing cost) fo
 manufacturer-profitability claim, which would need private company financials this project
 doesn't have.
 
+**A16 correction + biosimilar comparator re-pricing (2026-08-05)**, done together in one branch
+per `docs/decision_resolutions_2026-08-05.md` §11 ("blocks everything downstream; every number
+moves" — the top two priorities in that memo, ahead of everything else in its Bucket 3). A16
+(`docs/model_audit_v6.md`): the deterministic Remission utility (and the whole chain built on it)
+was running on 0.9554396356, a stray live PSA draw captured in the workbook snapshot
+(`model_health_utilities.csv`), not the 0.82 literature-cited base value analysis_plan.md §7.1
+item 19 and the PSA distribution file both name as the source — four independent lines of evidence
+in `docs/model_audit_v6.md`'s A16 entry. `R/04_costs_utilities.R`'s `load_health_state_utilities()`
+now derives the deterministic vector from `model_psa_parameter_distributions.csv`'s sourced values
+instead of reading the retired snapshot file, so the base case is by construction the PSA's own
+central draw. `tests/testthat/test-parameter-provenance.R` (new) makes this class of defect (A15,
+A16 — a `data/processed/` snapshot value used deterministically with no `data/raw/`-traceable
+source) fail loudly rather than needing manual rediscovery. Separately, A15 (the ~0.9494×
+dose-cost discrepancy) closed with the same root cause identified (a shared multiplicative shock
+across an unrelated TREG/IFX price pair, not independently reproducible from either build-up) —
+no code change needed, `psa_base` was already the figure in use. **Comparator pricing** (UST/IFX/
+ADA, analysis_plan.md §4.2): re-extracted at a single stated date against real, directly-queried
+CMS data (Part B ASP biosimilar Q-codes for UST/IFX; NADAC biosimilar NDCs for ADA) — biosimilar-
+inclusive pricing is now the base case (UST induction $4.5375/mg, UST maintenance $60.85/mg
+DERIVED PROXY — see below, IFX $2.6803/mg, ADA $14.2482/mg), originator pricing retained verbatim
+as the S8 comparability-with-Aliyev scenario (`load_drug_prices(pricing_basis =
+"originator_pre_biosimilar")`). UST maintenance's HCPCS code (J3357) no longer carries a Part B
+ASP payment limit at all in the current fee schedule — independent, unplanned confirmation that
+self-administered SC dosing isn't a Part B ASP product (the reasoning already applied to ADA); no
+NADAC ustekinumab biosimilar NDC exists yet either, so that one figure is a documented proxy, not
+a directly observed price (full chain in `data/raw/cms_asp_and_hcup_cost_sources.csv`'s own row).
+**Every deterministic and probabilistic result produced before this fix is superseded, not merely
+revised** — QALYs fall, ICERs and the required cure fraction π\* rise, and the EJP falls
+substantially on both changes; re-run `analysis/run_base_case.R` and friends before citing any
+number from before 2026-08-05. Full test suite: 324 assertions, 0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,

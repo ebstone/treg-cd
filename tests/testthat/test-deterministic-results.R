@@ -136,7 +136,13 @@ test_that("headroom_frontier returns a monotone-non-decreasing pi_star as price 
 })
 
 test_that("a longer horizon gives Treg strictly more headroom (lower pi* for the same price) -- sanity-checks that discounting/compounding flows through correctly", {
-  price <- 10000
+  # price = 7000, not 10000: after the A16 fix (deterministic utility base case rebuilt on 0.82,
+  # not the retired 0.9554 snapshot draw -- docs/model_audit_v6.md), every arm's QALYs are lower,
+  # so a price that used to leave the 6-year horizon feasible at pi=1 no longer does (10000 is now
+  # infeasible even at the 6yr horizon's own pi=1 -- correctly, not a bug: less durable benefit per
+  # cure buys less headroom). 7000 keeps both horizons in the interior-root regime this test is
+  # actually about.
+  price <- 7000
   short <- headroom_pi_star(price, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_6YR, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
   long <- headroom_pi_star(price, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_10YR, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
   expect_true(short$feasible && long$feasible)

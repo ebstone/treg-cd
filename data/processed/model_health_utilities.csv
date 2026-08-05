@@ -1,3 +1,15 @@
+# PROVENANCE NOTE (added 2026-08-05, A16, docs/model_audit_v6.md): this file is a workbook
+# snapshot artefact, NOT a base-case parameter file. Its Remission value (0.9554396356) is a stray
+# live PSA draw captured when the workbook was exported, not the cited literature figure (0.82,
+# Aliyev / NICE TA352, analysis_plan.md §7.1 item 19) -- four independent lines of evidence in the
+# A16 resolution (docs/model_audit_v6.md; docs/analysis_plan.md §15). The Mild/M-SR/M-S/Surgery
+# rows below reproduce correctly as (previous row) x (that state's own ratio in
+# model_utility_ratios_and_psa.csv) off THIS file's own Remission value -- i.e. the chain mechanics
+# are fine, only this starting point is a draw, not a parameter. RETIRED as a base-case input:
+# R/04_costs_utilities.R's load_health_state_utilities() no longer reads this file -- it derives
+# the deterministic vector from model_psa_parameter_distributions.csv's sourced 0.82-based values
+# instead (same file R/06_psa.R's PSA already samples its Uniform bounds from). Kept here, unused,
+# for provenance only -- do not wire this file back into any base-case code path.
 health_state,utility_value,variable_name
 Mod/Sev,0.5207171001578433,util_modsev
 Mod/Sev Resp,0.6574284805008743,util_resp

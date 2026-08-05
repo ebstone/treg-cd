@@ -327,14 +327,29 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
     net_monetary_benefit(s, wtp_usd)
   }
 
+  # Boundary comparisons use a tiny absolute tolerance (dollars, not proportion of NMB) -- without
+  # it, a price solved from the closed-form algebra in R/08_ejp.R (a different code path computing
+  # the same INMB=0 root) can land NMB(pi=1) a few 1e-10 below target_nmb from floating-point
+  # rounding alone, which would wrongly report the true pi=1 boundary case as infeasible
+  # (test-ejp.R's round-trip check). 1e-6 is far above any such noise and far below any NMB
+  # difference anyone would treat as a real result.
+  BOUNDARY_TOL_USD <- 1e-6
+
   nmb_at_0 <- treg_nmb_at_pi(0)
-  if (nmb_at_0 >= target_nmb) return(list(pi_star = 0, feasible = TRUE))
+  if (nmb_at_0 >= target_nmb - BOUNDARY_TOL_USD) return(list(pi_star = 0, feasible = TRUE))
 
   nmb_at_1 <- treg_nmb_at_pi(1)
-  if (nmb_at_1 < target_nmb) return(list(pi_star = NA_real_, feasible = FALSE))
+  if (nmb_at_1 < target_nmb - BOUNDARY_TOL_USD) return(list(pi_star = NA_real_, feasible = FALSE))
+  # Within tolerance of target but not quite at/above it (the floating-point-noise case above):
+  # clamp so uniroot() sees f(1) == 0 exactly rather than a same-signed tiny negative at both ends,
+  # which would otherwise throw "values at end points not of opposite sign" for a price whose true
+  # root is pi* = 1.
+  if (nmb_at_1 < target_nmb) nmb_at_1 <- target_nmb
 
-  root <- stats::uniroot(function(pi_sdr) treg_nmb_at_pi(pi_sdr) - target_nmb, interval = c(0, 1),
-                          tol = 1e-4)
+  root <- stats::uniroot(function(pi_sdr) {
+    if (pi_sdr == 1) return(nmb_at_1 - target_nmb)
+    treg_nmb_at_pi(pi_sdr) - target_nmb
+  }, interval = c(0, 1), tol = 1e-4)
   list(pi_star = root$root, feasible = TRUE)
 }
 
