@@ -238,6 +238,15 @@ The redesign adds one state and one transition rule, applicable only to the Treg
 
 **Non-cured Treg patients: recommend efficacy-equivalent to ustekinumab.** Drop the 20% adverse-transition reduction entirely. All incremental benefit in the Treg arm then flows through π and h, which makes the model interpretable, makes the headroom analysis clean, and prevents double-counting of benefit. The current approach — a cure narrative in the text and a 20% efficacy shave in the model — is the mismatch this redesign exists to fix. If co-authors wish to retain some non-cure advantage, model it explicitly as a hazard ratio on the M-S and Surgery transitions, sampled in the PSA, rather than as a deterministic 20% redistribution.
 
+**HR-advantage scenario implemented (2026-08-05, S12, §10.4).** The base case above (efficacy-
+equivalent, HR=1) is unchanged. The hazard-ratio scenario this paragraph names is now built —
+`R/03_cure_fraction_module.R`'s `apply_non_cured_hazard_ratio()`, applied only to the copy of
+UST's matrix Treg's own non-cured track runs on, never to the real UST comparator arm. A
+genuinely counterintuitive but verified-correct finding surfaced building it: strengthening the
+advantage very slightly *reduces* aggregate QALYs (Aliyev's own Surgery row has an unusually fast
+one-step return to Remission), even though it reliably raises NMB (the cost saving dominates) —
+see §10.4 for the full explanation.
+
 ### 6.3 State-transition diagram
 
 ```
@@ -513,24 +522,26 @@ One-way analysis across all parameters in Section 7.1 over their credible ranges
 | S9 | Perspective: healthcare sector vs. societal | Second Panel; favours durable therapy. **Not implemented** — needs the Manceur et al. 2020 productivity/absenteeism cost data actually wired into R/04, not just referenced here |
 | S10 | Discount rate: 3% / 0% / 1.5% / 5% | Discounting of one-time curative therapies is contested — **implemented 2026-08-05, §10.4**; `run_scenario_s10_discount_rate()`, `output/tables/scenario_s10_discount_rate.csv` |
 | S11 | Relapse from SDR re-enters at Mild vs. M-SR | Minor; cheap to run — **implemented 2026-08-05, §10.4**; `run_scenario_s11_relapse_destination()`. Evaluated at pi > 0 (pi=0 shows no difference by construction — no one is ever in SDR to relapse); effect is real but small (a few hundredths of a QALY at pi=0.9) |
-| S12 | Non-cured Treg = UST-equivalent vs. HR-advantaged | Tests the Section 6.2 recommendation. **Not implemented** — needs a sourced/assumed hazard ratio and new matrix-adjustment mechanics; no such parameter exists in this codebase yet |
+| S12 | Non-cured Treg = UST-equivalent vs. HR-advantaged | Tests the Section 6.2 recommendation — **implemented 2026-08-05, §6.2/§10.4**; `run_scenario_s12_non_cured_hr()`, illustrative HR grid (not sourced — Treg has no efficacy data to source it from), evaluated at π=0 (where it's most visible) |
 
 Twelve structural scenarios is more than can be reported in 6,000 words. Recommend S1, S3, S4, S5 and S8 in the main text; the remainder in Electronic Supplementary Material with a summary table in the main text.
 
-### 10.4 Mechanical scenarios (S1, S2, S4, S5, S10, S11): implementation note (2026-08-05)
+### 10.4 Mechanical scenarios (S1, S2, S4, S5, S10, S11, S12): implementation note (2026-08-05)
 
-Six of the twelve scenarios needed no new sourcing and little-to-no new mechanics — every
+Seven of the twelve scenarios needed no new sourcing and little-to-no new mechanics — every
 underlying toggle (`apply_cap`, a comparator subset, `annual_rate`, `relapse_destination`,
 `HORIZON_CYCLES_10YR`) either already existed in `R/05_deterministic_results.R` or was a one-line,
-backward-compatible parameter addition there. `R/09_scenarios.R` (new) is pure orchestration —
+backward-compatible parameter addition there. `R/09_scenarios.R` (new) is mostly orchestration —
 run the existing base case under each named scenario setting and stack the results with a
-labelled column — plus one genuinely new function, `run_cure_fraction_anchor_table()` (S4), which
+labelled column — plus two genuinely new pieces: `run_cure_fraction_anchor_table()` (S4), which
 reports Treg's own outcomes at named (π, T) points against its sourced price (a different
 question from what `headroom_pi_star()`/`headroom_frontier_by_duration()` already answer: those
-solve for the price/π a target would require, not "what happens at π = X"). `analysis/
-run_scenario_analyses.R` is the entry point, producing one CSV per scenario in `output/tables/`.
+solve for the price/π a target would require, not "what happens at π = X"); and
+`apply_non_cured_hazard_ratio()` (S12, `R/03_cure_fraction_module.R`), the one function in this
+batch that's new mechanics rather than orchestration. `analysis/run_scenario_analyses.R` is the
+entry point, producing one CSV per scenario in `output/tables/`.
 
-Two findings worth surfacing, not just the mechanics:
+Three findings worth surfacing, not just the mechanics:
 
 - **S2 (ADA in/out) changes nothing at Treg's sourced price.** IFX is the "next-best comparator"
   (§4.2) whether or not ADA is in the comparator set — pi* is bit-for-bit identical
@@ -542,13 +553,26 @@ Two findings worth surfacing, not just the mechanics:
   relapsing to Mild vs. Moderate-Severe Responder is on the order of a few thousandths of a QALY
   — directionally correct (Mild is the better state) but small enough that this scenario is
   reportable-for-completeness rather than headline-moving.
+- **S12 (non-cured HR-advantage) has a genuinely counterintuitive but verified-correct QALY
+  effect.** §6.2's own mechanism (a hazard ratio on the Moderate-Severe and Surgery transitions,
+  via the standard discrete-time proportional-hazards transform `p_new = 1 - (1-p_old)^HR`) is
+  implemented exactly as specified. But strengthening the "advantage" (HR falling from 1.0 to 0.7)
+  moves aggregate QALYs very slightly in the *wrong* direction (a ~0.01% relative decrease at the
+  extreme HR=0.05 tested during verification) — confirmed not a bug: Aliyev's own published
+  Surgery row has an 86.7% chance of landing back in Remission the very next cycle, a *faster*
+  one-step return to Remission than continuing to cycle through Moderate-Severe Responder or Mild
+  offers, so reducing Surgery entry isn't unambiguously a QALY win in this specific matrix, even
+  though it is unambiguously a cost win (Surgery is markedly more expensive). NMB is monotonically
+  higher as the advantage strengthens at every HR tried and every WTP threshold — the cost saving
+  dominates the tiny QALY wobble, so the decision-relevant conclusion is exactly what §6.2's own
+  framing anticipates; only the QALY component alone shows this small, explained non-monotonicity.
+  Full derivation in `R/03_cure_fraction_module.R`'s own module header.
 
-S6 (Treg 2-dose), S7 (SDR utility = general-population), S9 (societal perspective) and S12
-(non-cured Treg = HR-advantaged) remain **not implemented** — each needs either new sourcing
-(S7's utility norms, S9's productivity/absenteeism cost data) or new mechanics this codebase
-doesn't have anywhere yet (S6's per-cycle multi-dose trace logic, S12's hazard-ratio matrix
-adjustment) — see `R/09_scenarios.R`'s own module header for the detail on each, not repeated
-here to avoid the two copies drifting out of sync.
+S6 (Treg 2-dose), S7 (SDR utility = general-population) and S9 (societal perspective) remain
+**not implemented** — each needs either new sourcing (S7's utility norms, S9's productivity/
+absenteeism cost data) or new mechanics this codebase doesn't have anywhere yet (S6's per-cycle
+multi-dose trace logic) — see `R/09_scenarios.R`'s own module header for the detail on each, not
+repeated here to avoid the two copies drifting out of sync.
 
 ---
 

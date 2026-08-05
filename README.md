@@ -354,6 +354,28 @@ perspective) and S12 (non-cured Treg = HR-advantaged) remain **not implemented**
 sourcing or new mechanics not yet built (see `R/09_scenarios.R`'s own module header). Full test
 suite: 602 assertions (up from 555), 0 failures.
 
+**S12 (non-cured Treg = HR-advantaged) implemented same day**, closing the mechanism
+`docs/analysis_plan.md` §6.2 itself names ("model it explicitly as a hazard ratio on the M-S and
+Surgery transitions... rather than as a deterministic 20% redistribution"). New
+`R/03_cure_fraction_module.R`'s `apply_non_cured_hazard_ratio()` applies the standard discrete-
+time proportional-hazards transform (`p_new = 1 - (1-p_old)^HR`, guaranteed to stay in [0,1] for
+any starting probability and any HR>0) to the Moderate-Severe and Surgery columns of a *local
+copy* of UST's matrix — the real UST comparator arm's own matrix is never mutated (verified by a
+dedicated test). Freed probability mass moves to the row's better states (M-S-Responder/Mild/
+Remission) proportionally; Death is left untouched, since this scenario is about disease-severity
+outcomes, not mortality. `R/05_deterministic_results.R`'s `run_treg_arm_lifetime()` gained a
+one-line `non_cured_hazard_ratio = 1` passthrough (identity default, byte-identical to before);
+new `run_scenario_s12_non_cured_hr()` (R/09) sweeps an illustrative HR grid (1.0/0.9/0.8/0.7 — not
+sourced, Treg has no efficacy data to source it from) at π=0, where the scenario is most visible.
+**Genuinely counterintuitive finding, verified not a bug:** strengthening the advantage very
+slightly *lowers* aggregate QALYs, because Aliyev's own Surgery row has an 86.7% one-step chance
+of landing back in Remission — faster than continuing through Moderate-Severe Responder or Mild
+— so avoiding Surgery isn't unambiguously a QALY win in this specific matrix, even though it's
+unambiguously a cost win. NMB rises monotonically at every HR and WTP threshold tested regardless
+— the cost saving dominates. Full derivation in `R/03`'s own module header;
+`docs/analysis_plan.md` §6.2/§10.4 updated. Full test suite: 679 assertions (up from 602), 0
+failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,

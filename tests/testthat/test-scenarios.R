@@ -162,3 +162,92 @@ test_that("run_treg_arm_lifetime's relapse_destination = 'Mild' default is byte-
                                              relapse_destination = "Mild")
   expect_equal(without_arg, explicit_default)
 })
+
+# ---- S12: non-cured Treg = UST-equivalent vs. HR-advantaged ------------------------------------
+
+test_that("apply_non_cured_hazard_ratio(m, 1) is the exact identity transform", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  for (tx in c(COMPARATOR_THERAPIES, "CT")) {
+    m <- matrices[[tx]]
+    expect_identical(apply_non_cured_hazard_ratio(m, 1), m)
+  }
+})
+
+test_that("apply_non_cured_hazard_ratio preserves row-stochasticity and only ever reduces M-S/Surgery, leaving Death untouched", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  for (tx in c(COMPARATOR_THERAPIES, "CT")) {
+    m <- matrices[[tx]]
+    for (hr in c(0.9, 0.5, 0.1)) {
+      adj <- apply_non_cured_hazard_ratio(m, hr)
+      expect_equal(unname(rowSums(adj)), rep(1, nrow(adj)), tolerance = 1e-9)
+      expect_true(all(adj >= -1e-12 & adj <= 1 + 1e-12))
+      expect_true(all(adj[, "Moderate-Severe"] <= m[, "Moderate-Severe"] + 1e-12))
+      expect_true(all(adj[, "Surgery"] <= m[, "Surgery"] + 1e-12))
+      expect_equal(adj[, "Death"], m[, "Death"])
+    }
+  }
+})
+
+test_that("apply_non_cured_hazard_ratio matches the discrete-time proportional-hazards formula exactly", {
+  m <- build_all_transition_matrices(RAW_DIR)[["UST"]]
+  hr <- 0.6
+  adj <- apply_non_cured_hazard_ratio(m, hr)
+  expect_equal(adj[, "Moderate-Severe"], 1 - (1 - m[, "Moderate-Severe"]) ^ hr)
+  expect_equal(adj[, "Surgery"], 1 - (1 - m[, "Surgery"]) ^ hr)
+})
+
+test_that("apply_non_cured_hazard_ratio rejects a non-positive hazard ratio", {
+  m <- build_all_transition_matrices(RAW_DIR)[["UST"]]
+  expect_error(apply_non_cured_hazard_ratio(m, 0))
+  expect_error(apply_non_cured_hazard_ratio(m, -0.5))
+})
+
+test_that("run_treg_arm_lifetime's non_cured_hazard_ratio = 1 default is byte-identical to omitting it", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  treg_price <- load_treg_dose_acquisition_cost(PROC_DIR)
+  without_arg <- run_treg_arm_lifetime(HORIZON_CYCLES_6YR, pi_sdr = 0, relapse_hazard_annual = 0,
+                                        price_usd = treg_price, matrices = matrices,
+                                        raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  explicit_default <- run_treg_arm_lifetime(HORIZON_CYCLES_6YR, pi_sdr = 0, relapse_hazard_annual = 0,
+                                             price_usd = treg_price, matrices = matrices,
+                                             raw_dir = RAW_DIR, proc_dir = PROC_DIR,
+                                             non_cured_hazard_ratio = 1)
+  expect_equal(without_arg, explicit_default)
+})
+
+test_that("run_treg_arm_lifetime(non_cured_hazard_ratio < 1) never mutates the shared matrices list", {
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  before <- matrices[["UST"]]
+  treg_price <- load_treg_dose_acquisition_cost(PROC_DIR)
+  invisible(run_treg_arm_lifetime(HORIZON_CYCLES_6YR, pi_sdr = 0, relapse_hazard_annual = 0,
+                                   price_usd = treg_price, matrices = matrices,
+                                   raw_dir = RAW_DIR, proc_dir = PROC_DIR,
+                                   non_cured_hazard_ratio = 0.5))
+  expect_identical(matrices[["UST"]], before)
+})
+
+test_that("run_scenario_s12_non_cured_hr's HR=1 row exactly reproduces the identity-transform Treg outcome, and NMB rises monotonically as the advantage strengthens", {
+  res <- run_scenario_s12_non_cured_hr(raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_equal(nrow(res), length(NON_CURED_HR_GRID))
+
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  treg_price <- load_treg_dose_acquisition_cost(PROC_DIR)
+  base <- run_treg_arm_lifetime(HORIZON_CYCLES_6YR, pi_sdr = 0, relapse_hazard_annual = 0,
+                                 price_usd = treg_price, matrices = matrices,
+                                 raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  hr1_row <- res[res$non_cured_hazard_ratio == 1, ]
+  expect_equal(hr1_row$qalys, base$qalys)
+  expect_equal(hr1_row$total_cost, base$total_cost)
+
+  # Cost falls monotonically as the advantage strengthens (Surgery/M-S are the expensive states);
+  # NMB rises monotonically at every WTP threshold, dominated by that cost saving -- verified
+  # (R/09_scenarios.R's own module header) that QALYs alone are NOT guaranteed monotone here,
+  # a real, explained structural feature of Aliyev's own matrix (Surgery's own row has a fast
+  # one-step return to Remission), not a bug -- so this test deliberately does NOT assert
+  # monotone QALYs, only monotone cost and NMB, the metric that's actually decision-relevant.
+  ordered <- res[order(-res$non_cured_hazard_ratio), ]
+  expect_true(all(diff(ordered$total_cost) <= 1e-6))
+  for (col in c("nmb_at_50000", "nmb_at_100000", "nmb_at_150000")) {
+    expect_true(all(diff(ordered[[col]]) >= -1e-6))
+  }
+})

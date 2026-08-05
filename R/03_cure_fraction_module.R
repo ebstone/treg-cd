@@ -225,3 +225,74 @@ run_treg_arm_with_mortality <- function(ust_matrix, ct_matrix, initial_on_biolog
     total = runs[[1]]$total + runs[[2]]$total
   )
 }
+
+# ---- Scenario S12: non-cured Treg = HR-advantaged (analysis_plan.md §6.2/§10.3) -----------------
+#
+# §6.2's own recommended base case is "efficacy-equivalent to ustekinumab... drop the 20%
+# adverse-transition reduction entirely" -- already how this module works (this file's own header:
+# no separate Treg transition matrix, UST's maintenance matrix used unmodified). But the same
+# paragraph names the scenario explicitly, if a co-author wants to retain some non-cure advantage:
+# "model it explicitly as a hazard ratio on the M-S and Surgery transitions, sampled in the PSA,
+# rather than as a deterministic 20% redistribution." apply_non_cured_hazard_ratio() below is
+# exactly that -- applied only to the copy of UST's matrix Treg's own non-cured track runs on
+# (R/05_deterministic_results.R's run_treg_arm_lifetime()), never to the real UST comparator arm's
+# own matrix, which must stay unmodified.
+#
+# ---- Why the proportional-hazards transform, not p_new = p_old * HR -----------------------------
+#
+# A hazard ratio is a statement about the underlying continuous-time hazard, not about a discrete-
+# cycle probability directly -- multiplying the probability itself doesn't correctly represent
+# "the same constant-hazard process, scaled by HR" and isn't guaranteed to stay in [0,1] for an
+# arbitrary starting probability. The standard discrete-time translation of a proportional-hazards
+# effect is p_new = 1 - (1 - p_old)^HR (derived from p = 1 - exp(-hazard x time), the same relation
+# hazard_to_cycle_probability() above already uses elsewhere in this file) -- guaranteed to stay in
+# [0,1] for any p_old in [0,1] and HR > 0, and reduces to p_new = p_old exactly only in the limit of
+# small p_old, not as a general identity. HR < 1 ("advantaged") always gives p_new < p_old; HR = 1
+# is the identity (byte-identical to the unmodified matrix, run_treg_arm_lifetime()'s own default).
+#
+# ---- Where the freed probability mass goes, and why Death is excluded --------------------------
+#
+# Reducing a row's Moderate-Severe and Surgery entries frees up probability mass that must go
+# somewhere for the row to still sum to 1. It's redistributed across the row's OTHER live states
+# (Moderate-Severe Responder, Mild, Remission) in proportion to their existing shares within that
+# trio -- not via age_adjust_matrix()'s blanket "rescale every other column" mechanic (appropriate
+# there because installing a new background-mortality figure is legitimately a property of every
+# state alike), and not via a blanket rescale here either, because that would also inflate Death,
+# which has no business rising just because M-S/Surgery risk fell. This scenario is specifically
+# about disease-severity outcomes, not a claim about mortality; Death is left untouched, exactly as
+# published (all four of MAINTENANCE_STATES's non-M-S/non-Surgery/non-Death columns already exist
+# in every therapy's own matrix, so this generalises without special-casing any one row).
+NON_CURED_BETTER_STATES <- c("Moderate-Severe Responder", "Mild", "Remission")
+
+#' Apply an "advantaged" hazard ratio to Moderate-Severe and Surgery transitions in one square
+#' maintenance matrix (build_transition_matrix()'s output) -- see this file's own header
+#' ("Scenario S12") for the full rationale. `hazard_ratio = 1` (default) is the identity transform
+#' (byte-identical to the input matrix, fully backward compatible); `hazard_ratio < 1` reduces
+#' both M-S and Surgery probabilities in every row, redistributing the freed mass to
+#' NON_CURED_BETTER_STATES proportionally (equal thirds if all three are zero in a given row).
+#' `hazard_ratio > 1` (a "disadvantaged" scenario -- not this project's use case, but not excluded
+#' either) works symmetrically in the other direction.
+apply_non_cured_hazard_ratio <- function(m, hazard_ratio = 1) {
+  stopifnot(hazard_ratio > 0, all(c("Moderate-Severe", "Surgery", "Death") %in% colnames(m)),
+            all(NON_CURED_BETTER_STATES %in% colnames(m)))
+  if (hazard_ratio == 1) return(m)
+
+  out <- m
+  for (i in seq_len(nrow(m))) {
+    old_ms <- m[i, "Moderate-Severe"]
+    old_surgery <- m[i, "Surgery"]
+    new_ms <- 1 - (1 - old_ms) ^ hazard_ratio
+    new_surgery <- 1 - (1 - old_surgery) ^ hazard_ratio
+    freed_mass <- (old_ms - new_ms) + (old_surgery - new_surgery)
+    if (freed_mass == 0) next
+
+    out[i, "Moderate-Severe"] <- new_ms
+    out[i, "Surgery"] <- new_surgery
+
+    better_shares <- m[i, NON_CURED_BETTER_STATES]
+    better_total <- sum(better_shares)
+    weights <- if (better_total > 0) better_shares / better_total else rep(1 / 3, 3)
+    out[i, NON_CURED_BETTER_STATES] <- out[i, NON_CURED_BETTER_STATES] + freed_mass * weights
+  }
+  out
+}

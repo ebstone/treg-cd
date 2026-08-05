@@ -30,6 +30,21 @@
 #   own pi=0 Null floor has ZERO patients ever entering SDR, so relapse_destination has
 #   (correctly) no effect there at all -- this scenario is only visible once some patients are
 #   actually cured, i.e. pi > 0.
+# - S12 (non-cured Treg = UST-equivalent vs. HR-advantaged, analysis_plan.md §6.2, added
+#   2026-08-05) -- run_scenario_s12_non_cured_hr(). §6.2 itself names the mechanism ("model it
+#   explicitly as a hazard ratio on the M-S and Surgery transitions"); R/03_cure_fraction_module.R's
+#   new apply_non_cured_hazard_ratio() is exactly that, wired through R/05's run_treg_arm_lifetime()
+#   as an opt-in non_cured_hazard_ratio = 1 parameter (identity transform, backward compatible).
+#   Evaluated at pi = 0 (unlike S11, this scenario is MOST visible there -- at pi=0, 100% of Treg
+#   patients are on the non-cured track this HR modifies). **Genuinely counterintuitive finding,
+#   verified not a bug:** QALYs move very slightly in the "wrong" direction as the advantage
+#   strengthens (a ~0.01% relative decrease from HR=1 to HR=0.05), because Surgery's own row in
+#   Aliyev's published matrix has an 86.7% chance of landing back in Remission the very next cycle
+#   -- a faster one-step return to Remission than continuing to cycle through Moderate-Severe
+#   Responder or Mild offers. Reducing entry into Surgery therefore isn't unambiguously a QALY win
+#   in THIS matrix, even though it is unambiguously a cost win (Surgery is expensive) -- NMB is
+#   monotonically higher as the advantage strengthens at every HR tried, since the cost saving
+#   dominates the tiny QALY wobble. See R/03's own module header for the full derivation.
 #
 # ---- Scenarios explicitly NOT covered here, a real flagged gap, not an oversight ---------------
 #
@@ -42,9 +57,6 @@
 # - S9 (healthcare-sector vs. societal perspective): needs the Manceur et al. 2020 productivity/
 #   absenteeism cost data actually wired into R/04, not just referenced in analysis_plan.md §4.1 --
 #   not done here.
-# - S12 (non-cured Treg = UST-equivalent vs. HR-advantaged): needs a sourced or assumed hazard
-#   ratio AND a mechanism to apply it to the non-cured track's matrix -- no such parameter exists
-#   anywhere in this codebase yet; not built here.
 
 if (!exists("run_base_case")) source("R/05_deterministic_results.R")
 
@@ -260,6 +272,46 @@ run_scenario_s11_relapse_destination <- function(n_cycles = HORIZON_CYCLES_6YR,
     c(list(pi_sdr = pi_sdr, relapse_destination = relapse_destination,
            duration_years = duration_years, qalys = s$qalys, total_cost = s$total_cost),
       nmb_cols)
+  })
+  do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
+}
+
+# ---- S12: non-cured Treg = UST-equivalent vs. HR-advantaged --------------------------------------
+
+#' Illustrative hazard-ratio grid for S12 -- 1.0 is the recorded base case (§6.2: "efficacy-
+#' equivalent to ustekinumab"); the rest are NOT sourced from any trial (Treg has none) and are
+#' explicitly illustrative "what if" values, the same "vary widely" spirit as this project's other
+#' assumption-built scenarios (S3, S4).
+NON_CURED_HR_GRID <- c(1, 0.9, 0.8, 0.7)
+
+#' Treg's own outcomes at each hazard ratio in NON_CURED_HR_GRID, at pi = 0 (the Null floor --
+#' unlike S11, this is where S12 is MOST visible: at pi=0 every Treg patient is on the non-cured
+#' track apply_non_cured_hazard_ratio() modifies, not a diminishing (1-pi) fraction of one). Same
+#' table shape as run_base_case()'s own Treg row, stacked across the HR grid; comparator rows
+#' aren't repeated here since they're identical across every HR value (this parameter only touches
+#' the copy of UST's matrix Treg's own non-cured track runs on, R/05's own docstring on
+#' run_treg_arm_lifetime()).
+run_scenario_s12_non_cured_hr <- function(n_cycles = HORIZON_CYCLES_6YR,
+                                           weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
+                                           annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
+                                           raw_dir = "data/raw", proc_dir = "data/processed",
+                                           baseline_age = NULL, life_table = NULL,
+                                           hazard_ratio_grid = NON_CURED_HR_GRID) {
+  matrices <- build_all_transition_matrices(raw_dir)
+  treg_price <- load_treg_dose_acquisition_cost(proc_dir)
+
+  rows <- lapply(hazard_ratio_grid, function(hr) {
+    s <- run_treg_arm_lifetime(
+      n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
+      weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
+      cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
+      baseline_age = baseline_age, life_table = life_table, non_cured_hazard_ratio = hr
+    )
+    nmb_cols <- stats::setNames(
+      as.list(vapply(WTP_THRESHOLDS_USD, function(wtp) net_monetary_benefit(s, wtp), numeric(1))),
+      paste0("nmb_at_", format(WTP_THRESHOLDS_USD, scientific = FALSE, trim = TRUE))
+    )
+    c(list(non_cured_hazard_ratio = hr, qalys = s$qalys, total_cost = s$total_cost), nmb_cols)
   })
   do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
 }

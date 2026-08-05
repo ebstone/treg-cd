@@ -66,5 +66,11 @@ s11 <- run_scenario_s11_relapse_destination()
 print(s11, row.names = FALSE)
 write_table(s11, "scenario_s11_relapse_destination.csv")
 
-cat("\nDone. S6/S7/S9/S12 NOT run here -- see R/09_scenarios.R's own module header for what each",
+# ---- S12: non-cured Treg = UST-equivalent vs. HR-advantaged --------------------------------------
+cat("\n=== S12: non-cured Treg HR-advantage (illustrative grid, pi=0) ===\n")
+s12 <- run_scenario_s12_non_cured_hr()
+print(s12, row.names = FALSE)
+write_table(s12, "scenario_s12_non_cured_hr.csv")
+
+cat("\nDone. S6/S7/S9 NOT run here -- see R/09_scenarios.R's own module header for what each",
     "still needs (new sourcing or new mechanics, not built as of this pass).\n")
