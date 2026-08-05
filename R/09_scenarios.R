@@ -45,18 +45,37 @@
 #   in THIS matrix, even though it is unambiguously a cost win (Surgery is expensive) -- NMB is
 #   monotonically higher as the advantage strengthens at every HR tried, since the cost saving
 #   dominates the tiny QALY wobble. See R/03's own module header for the full derivation.
+# - S7 (SDR utility = Remission vs. general-population, added 2026-08-05) --
+#   run_scenario_s7_sdr_utility(). Sourced: Jiang et al. 2021 (Qual Life Res), US EQ-5D-5L
+#   population norms by age/sex (R/utils/population_utility.R). R/04's `attach_sdr_costs_utilities()`
+#   gained an opt-in `sdr_utility = NULL` parameter (default: Remission's own utility, unchanged);
+#   R/05's `run_treg_arm_lifetime()` computes the general-population value/schedule and passes it
+#   through when `sdr_utility_source = "general_population"`. Age-varying at the lifetime horizon
+#   (baseline_age supplied), a single reference-age value otherwise. **Stated limitation**: Jiang's
+#   norms are EQ-5D-5L; this project's own disease-state utilities trace to an EQ-5D-3L-based
+#   source (Aliyev/NICE TA352) -- a real, minor version mismatch, not hidden (R/utils/
+#   population_utility.R's own module header).
+# - S9 (healthcare-sector vs. societal perspective, added 2026-08-05) --
+#   run_scenario_s9_perspective(). Sourced: Manceur et al. 2020 (J Med Econ), $2,168/year
+#   incremental work-loss cost per CD patient (data/raw/manceur2020_productivity_cost.csv). New
+#   `societal_monitoring_costs()` (R/04) adds this, per-cycle, to every living state uniformly --
+#   applied as a flat population-average addition, not stratified by disease activity, since the
+#   source itself doesn't stratify that way. `perspective = "healthcare_sector"` (default) vs.
+#   `"societal"` threaded through run_comparator_arm_lifetime()/run_treg_arm_lifetime()/
+#   run_base_case() -- swaps which `monitoring_costs` vector is used, no other code path touched.
 #
-# ---- Scenarios explicitly NOT covered here, a real flagged gap, not an oversight ---------------
+# ---- Scenarios explicitly NOT covered here ------------------------------------------------------
 #
 # - S3 is done separately (R/utils/refractory_multipliers.R, R/05's run_refractory_scenario()) --
 #   not repeated here.
-# - S6 (Treg 1 dose vs. 2 doses): treg_dose_cost()'s own module header (R/04) already explains why
-#   this needs new per-cycle-trace logic a one-time cost function can't provide -- not built here.
-# - S7 (SDR utility = Remission vs. general-population): needs sourcing US general-population
-#   utility norms -- not done here (R/04's own docstring already flags this as unimplemented).
-# - S9 (healthcare-sector vs. societal perspective): needs the Manceur et al. 2020 productivity/
-#   absenteeism cost data actually wired into R/04, not just referenced in analysis_plan.md §4.1 --
-#   not done here.
+# - S6 (Treg 1 dose vs. 2 doses) -- deliberately DEPRIORITIZED, not merely unbuilt (2026-08-05,
+#   Eric + Claude Code, after reviewing the base-rate question directly): no dosing-interval
+#   assumption for a second dose exists anywhere in this project's own documentation, and the
+#   2-dose design itself was already judged unfounded enough that the base case was changed to
+#   single-dose specifically because of it (analysis_plan.md §4.1's own recorded recommendation).
+#   Building new per-cycle-trace mechanics (treg_dose_cost()'s own module header, R/04, already
+#   explains why a one-time cost function can't do this) on top of an invented timing assumption
+#   isn't worth it unless a real anchor turns up later.
 
 if (!exists("run_base_case")) source("R/05_deterministic_results.R")
 
@@ -314,4 +333,66 @@ run_scenario_s12_non_cured_hr <- function(n_cycles = HORIZON_CYCLES_6YR,
     c(list(non_cured_hazard_ratio = hr, qalys = s$qalys, total_cost = s$total_cost), nmb_cols)
   })
   do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
+}
+
+# ---- S7: SDR utility = Remission vs. general-population ----------------------------------------
+
+#' Treg's own outcomes at PI_ANCHOR_GRID x sdr_utility_source in {"remission", "general_population"},
+#' at the base-case relapse duration (DEFAULT_RELAPSE_DURATION_YEARS) and Treg's sourced price --
+#' same shape/rationale as run_scenario_s11_relapse_destination(): only visible once pi > 0 (at
+#' pi=0 no patient is ever in SDR, so the SDR utility source can't matter), and comparator arms are
+#' unaffected (they have no SDR state), so only Treg's row is reported.
+#' `baseline_age = NULL` (default): the general-population value is a single reference-age point
+#' (ASSUMED_PATIENT_AGE_YEARS, R/utils/population_utility.R's own default when baseline_age is
+#' NULL) -- matching this scenario's default 6.15-year horizon, which doesn't track attained age.
+#' Pass `baseline_age = ASSUMED_PATIENT_AGE_YEARS` with `n_cycles = HORIZON_CYCLES_LIFETIME` for
+#' the age-varying version instead.
+run_scenario_s7_sdr_utility <- function(n_cycles = HORIZON_CYCLES_6YR,
+                                         weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
+                                         annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
+                                         raw_dir = "data/raw", proc_dir = "data/processed",
+                                         baseline_age = NULL, life_table = NULL,
+                                         pi_grid = PI_ANCHOR_GRID,
+                                         duration_years = DEFAULT_RELAPSE_DURATION_YEARS) {
+  matrices <- build_all_transition_matrices(raw_dir)
+  treg_price <- load_treg_dose_acquisition_cost(proc_dir)
+  h <- duration_to_hazard(duration_years)
+
+  sources <- c("remission", "general_population")
+  grid <- expand.grid(pi_sdr = pi_grid, sdr_utility_source = sources, stringsAsFactors = FALSE)
+  rows <- lapply(seq_len(nrow(grid)), function(i) {
+    pi_sdr <- grid$pi_sdr[i]
+    sdr_utility_source <- grid$sdr_utility_source[i]
+    s <- run_treg_arm_lifetime(
+      n_cycles, pi_sdr = pi_sdr, relapse_hazard_annual = h, price_usd = treg_price,
+      matrices = matrices, weight_kg = weight_kg, cycle_weeks = cycle_weeks,
+      annual_rate = annual_rate, cap_cycle = cap_cycle, apply_cap = apply_cap,
+      raw_dir = raw_dir, proc_dir = proc_dir, baseline_age = baseline_age, life_table = life_table,
+      sdr_utility_source = sdr_utility_source
+    )
+    nmb_cols <- stats::setNames(
+      as.list(vapply(WTP_THRESHOLDS_USD, function(wtp) net_monetary_benefit(s, wtp), numeric(1))),
+      paste0("nmb_at_", format(WTP_THRESHOLDS_USD, scientific = FALSE, trim = TRUE))
+    )
+    c(list(pi_sdr = pi_sdr, sdr_utility_source = sdr_utility_source,
+           duration_years = duration_years, qalys = s$qalys, total_cost = s$total_cost),
+      nmb_cols)
+  })
+  do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
+}
+
+# ---- S9: healthcare-sector vs. societal perspective ---------------------------------------------
+
+#' Stacks run_base_case() with `perspective = "healthcare_sector"` (the actual base case) and
+#' `perspective = "societal"` (Manceur et al. 2020-sourced productivity cost added to every living
+#' state, R/04_costs_utilities.R's societal_monitoring_costs()). All four arms (UST/IFX/ADA/TREG)
+#' are affected identically in cost (same flat per-cycle addition to every non-Death state); QALYs
+#' are unaffected -- perspective changes which costs count, not health outcomes.
+run_scenario_s9_perspective <- function(...) {
+  healthcare_sector <- run_base_case(perspective = "healthcare_sector", ...)
+  societal <- run_base_case(perspective = "societal", ...)
+  rbind(
+    cbind(perspective = "healthcare_sector", healthcare_sector),
+    cbind(perspective = "societal", societal)
+  )
 }

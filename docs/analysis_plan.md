@@ -516,10 +516,10 @@ One-way analysis across all parameters in Section 7.1 over their credible ranges
 | S3 | Biologic-naïve vs. refractory population | Decision 3 — **implemented 2026-08-05, §5.4**; response/remission and surgery-hazard multipliers, run at the 6.15-year horizon (`run_refractory_scenario()`, `output/tables/refractory_scenario_results.csv`); surgery hazard is a deliberate upper-bound proxy (population-severity mismatch), not a matched estimate |
 | S4 | Cure-fraction anchor: optimistic / moderate / pessimistic / null | Decision 4 — **implemented 2026-08-05, §10.4**; `run_cure_fraction_anchor_table()` reports the FULL pi ∈ {0,50,75,90%} × T ∈ {2,5,10,20,Inf yr} grid at Treg's sourced price, rather than one hand-picked (pi, T) pairing per label — deliberately, since the published analogs (§7.2) inform a plausible range, not a point estimate |
 | S5 | Time horizon: lifetime / 10-year / 6.15-year | Tests the truncation critique directly and reproduces the current draft — **lifetime arm implemented 2026-08-05, §4.3; full three-way comparison table implemented same day, §10.4** (`run_scenario_s5_horizon()`); deterministic base case only (PSA/EVPI/EVPPI/probabilistic EJP still 6.15-year at every horizon) |
-| S6 | Treg dosing: 1 dose vs. 2 doses | Current draft assumes 2; the reference clinical programme is a single infusion. **Not implemented** — needs new per-cycle-trace logic a one-time cost function can't provide (`treg_dose_cost()`'s own module header, R/04) |
-| S7 | SDR utility = Remission vs. general-population | Locates how much of the cure's value is utility-driven. **Not implemented** — needs sourcing US general-population utility norms |
+| S6 | Treg dosing: 1 dose vs. 2 doses | Current draft assumes 2; the reference clinical programme is a single infusion. **Deprioritized 2026-08-05, not merely unbuilt** — no dosing-interval assumption for a second dose exists anywhere in this project's documentation, and the 2-dose design was already judged unfounded enough that the base case was changed to single-dose specifically because of it; building new mechanics (`treg_dose_cost()`'s own module header, R/04, explains why a one-time cost function can't do this) on top of an invented timing assumption isn't worth it unless a real anchor turns up |
+| S7 | SDR utility = Remission vs. general-population | Locates how much of the cure's value is utility-driven — **implemented 2026-08-05, §10.4**; `run_scenario_s7_sdr_utility()`, sourced from Jiang et al. 2021 US EQ-5D-5L population norms (age/sex-stratified, R/utils/population_utility.R); a stated version mismatch vs. this project's EQ-5D-3L-based disease-state utilities |
 | S8 | Comparator pricing: **biosimilar-era pricing (base case, as of 2026-08-05) vs. originator/pre-biosimilar pricing (now the scenario)** | Section 4.2 — inverted from the original S8 framing; `load_drug_prices(pricing_basis = "originator_pre_biosimilar")` runs this scenario |
-| S9 | Perspective: healthcare sector vs. societal | Second Panel; favours durable therapy. **Not implemented** — needs the Manceur et al. 2020 productivity/absenteeism cost data actually wired into R/04, not just referenced here |
+| S9 | Perspective: healthcare sector vs. societal | Second Panel; favours durable therapy — **implemented 2026-08-05, §10.4**; `run_scenario_s9_perspective()`, sourced from Manceur et al. 2020's $2,168/year incremental work-loss cost per CD patient, applied as a flat per-cycle addition to every living state (`societal_monitoring_costs()`, R/04) |
 | S10 | Discount rate: 3% / 0% / 1.5% / 5% | Discounting of one-time curative therapies is contested — **implemented 2026-08-05, §10.4**; `run_scenario_s10_discount_rate()`, `output/tables/scenario_s10_discount_rate.csv` |
 | S11 | Relapse from SDR re-enters at Mild vs. M-SR | Minor; cheap to run — **implemented 2026-08-05, §10.4**; `run_scenario_s11_relapse_destination()`. Evaluated at pi > 0 (pi=0 shows no difference by construction — no one is ever in SDR to relapse); effect is real but small (a few hundredths of a QALY at pi=0.9) |
 | S12 | Non-cured Treg = UST-equivalent vs. HR-advantaged | Tests the Section 6.2 recommendation — **implemented 2026-08-05, §6.2/§10.4**; `run_scenario_s12_non_cured_hr()`, illustrative HR grid (not sourced — Treg has no efficacy data to source it from), evaluated at π=0 (where it's most visible) |
@@ -568,11 +568,56 @@ Three findings worth surfacing, not just the mechanics:
   framing anticipates; only the QALY component alone shows this small, explained non-monotonicity.
   Full derivation in `R/03_cure_fraction_module.R`'s own module header.
 
-S6 (Treg 2-dose), S7 (SDR utility = general-population) and S9 (societal perspective) remain
-**not implemented** — each needs either new sourcing (S7's utility norms, S9's productivity/
-absenteeism cost data) or new mechanics this codebase doesn't have anywhere yet (S6's per-cycle
-multi-dose trace logic) — see `R/09_scenarios.R`'s own module header for the detail on each, not
-repeated here to avoid the two copies drifting out of sync.
+S6 (Treg 2-dose) is deliberately **deprioritized**, not merely unbuilt — see its own table row
+above; not repeated here.
+
+### 10.5 Sourced scenarios (S7, S9): implementation note (2026-08-05)
+
+Unlike §10.4's batch, S7 and S9 each needed a real literature search, done the same day as the
+mechanical scenarios above.
+
+**S7 (SDR utility = general-population).** Source: Jiang R, Janssen MFB, Pickard AS. "US
+population norms for the EQ-5D-5L and comparison of norms from face-to-face and online samples."
+*Qual Life Res.* 2021;30(3):803-816 — age- and sex-stratified US EQ-5D-5L index scores (US value
+set, cTTO), the face-to-face sample (the paper's own primary/recommended norms).
+`R/utils/population_utility.R` (new) loads this table and computes a sex-averaged (unweighted
+mean of the male/female figures, matching this project's own stated 50/50 cohort assumption
+rather than Jiang's unrelated sample sizes) utility at any age, either as a single reference-age
+value (the 6.15-year/10-year horizons, which don't track attained age) or a genuinely age-varying,
+cycle-by-cycle schedule (the lifetime horizon). `R/04_costs_utilities.R`'s
+`attach_sdr_costs_utilities()` gained an opt-in `sdr_utility = NULL` parameter (default:
+Remission's own utility, byte-identical to before); `R/05`'s `run_treg_arm_lifetime()` computes
+and passes the general-population value when `sdr_utility_source = "general_population"`.
+**Stated limitation, not hidden**: Jiang et al.'s norms are EQ-5D-5L; this project's own
+disease-state utilities trace to an EQ-5D-3L-based source (Aliyev/NICE TA352) — a real, minor
+descriptive-system/value-set mismatch between the disease-state utilities and this scenario's
+comparator, the best available age-stratified US general-population dataset found, not a
+perfectly version-matched one. **Result:** general-population utility at the cohort's baseline
+age (35, sex-averaged 0.843) modestly exceeds Remission's own utility (0.82), so the scenario
+raises Treg's QALYs slightly wherever any patient is actually cured (π > 0) — zero effect at π=0,
+by construction (no patient is ever in SDR to have its utility source matter).
+
+**S9 (healthcare-sector vs. societal perspective).** Source: Manceur AM, Ding Z, Muser E, et al.
+"Burden of Crohn's disease in the United States: long-term healthcare and work-loss related
+costs." *J Med Econ.* 2020;23(10):1092-1101 — a retrospective claims-cohort analysis (OptumHealth,
+n=6,715 CD patients vs. 33,575 matched non-IBD controls, ~5-year average follow-up) reporting a
+**$2,168 incremental annual work-loss cost per CD patient**. This figure is a population average
+over the whole cohort's mixed active-disease/remission experience, not stratified by momentary
+disease activity — applying it as anything other than a flat per-cycle addition to every living
+state would fabricate a precision the source doesn't support, so `R/04`'s new
+`societal_monitoring_costs()` does exactly that (Death excluded). Whether Treg's own Sustained
+Deep Remission state should be exempted from this cost, paralleling S7's own utility argument, is
+a stated, deliberately undecided modelling choice — the current implementation does not exempt
+it, the more conservative (larger societal-cost) choice. `perspective = "healthcare_sector"`
+(default) vs. `"societal"` threaded through `run_comparator_arm_lifetime()`/
+`run_treg_arm_lifetime()`/`run_base_case()` — swaps which `monitoring_costs` vector is used, no
+other code path touched. **Result:** cost rises for every arm identically in absolute terms (the
+same flat per-cycle addition), QALYs are unaffected (perspective changes which costs count, not
+health outcomes) — NMB falls for every arm under the societal lens, since this project's model has
+no offsetting productivity BENEFIT of durable cure built in yet (a natural extension, not
+attempted this pass).
+
+Full test suite for both: 728 assertions (up from 679), 0 failures.
 
 ---
 

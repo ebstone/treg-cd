@@ -72,5 +72,17 @@ s12 <- run_scenario_s12_non_cured_hr()
 print(s12, row.names = FALSE)
 write_table(s12, "scenario_s12_non_cured_hr.csv")
 
-cat("\nDone. S6/S7/S9 NOT run here -- see R/09_scenarios.R's own module header for what each",
-    "still needs (new sourcing or new mechanics, not built as of this pass).\n")
+# ---- S7: SDR utility = Remission vs. general-population -----------------------------------------
+cat("\n=== S7: SDR utility (Remission vs. general-population) ===\n")
+s7 <- run_scenario_s7_sdr_utility()
+print(s7, row.names = FALSE)
+write_table(s7, "scenario_s7_sdr_utility.csv")
+
+# ---- S9: healthcare-sector vs. societal perspective ----------------------------------------------
+cat("\n=== S9: perspective (healthcare-sector vs. societal) ===\n")
+s9 <- run_scenario_s9_perspective()
+print(s9, row.names = FALSE)
+write_table(s9, "scenario_s9_perspective.csv")
+
+cat("\nDone. S6 deliberately NOT run here (deprioritized, not just unbuilt -- see",
+    "R/09_scenarios.R's own module header for why).\n")

@@ -19,6 +19,7 @@
 repo_root_relative <- function(...) file.path("..", "..", ...)
 source(repo_root_relative("R", "utils", "transition_matrix.R"), local = TRUE)
 source(repo_root_relative("R", "utils", "life_table.R"), local = TRUE)
+source(repo_root_relative("R", "utils", "population_utility.R"), local = TRUE)
 source(repo_root_relative("R", "00_derive_transition_probs.R"), local = TRUE)
 source(repo_root_relative("R", "02_markov_engine.R"), local = TRUE)
 source(repo_root_relative("R", "03_cure_fraction_module.R"), local = TRUE)

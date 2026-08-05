@@ -376,6 +376,40 @@ unambiguously a cost win. NMB rises monotonically at every HR and WTP threshold 
 `docs/analysis_plan.md` §6.2/§10.4 updated. Full test suite: 679 assertions (up from 602), 0
 failures.
 
+**S7 and S9 implemented same day (commit pending), closing two more structural scenarios that
+needed real sourcing** — S6 (Treg 2-dose) deliberately dropped instead, see below.
+
+**S7 (SDR utility = general-population).** Source: Jiang R, Janssen MFB, Pickard AS, *Qual Life
+Res* 2021;30(3):803-816 — age/sex-stratified US EQ-5D-5L population norms (US value set). New
+`R/utils/population_utility.R` computes a sex-averaged utility at any age (single reference-age
+value for the 6.15-year/10-year horizons; a genuinely age-varying schedule for the lifetime
+horizon). `R/04`'s `attach_sdr_costs_utilities()` gained an opt-in `sdr_utility = NULL` parameter
+(default: Remission's own utility, byte-identical to before); `R/05`'s `run_treg_arm_lifetime()`
+computes and passes it through `sdr_utility_source = "general_population"`. **Stated limitation**:
+Jiang et al. is EQ-5D-5L; this project's own disease-state utilities trace to an EQ-5D-3L-based
+source — a real, minor version mismatch, not hidden. **Result:** general-population utility at the
+cohort's baseline age (0.843) modestly exceeds Remission's own (0.82), so QALYs rise slightly
+wherever π > 0 — no effect at π=0, correctly, since no patient is ever in SDR there.
+
+**S9 (healthcare-sector vs. societal perspective).** Source: Manceur et al. 2020, *J Med Econ*
+23(10):1092-1101 — **$2,168/year incremental work-loss cost per Crohn's disease patient**
+(claims-cohort, n=6,715 CD / 33,575 matched controls). New `societal_monitoring_costs()` (R/04)
+adds this, per-cycle, to every living state uniformly (a flat population-average addition, not
+stratified by disease activity, since the source itself isn't); `perspective = "healthcare_sector"`
+(default) vs. `"societal"` threaded through `run_comparator_arm_lifetime()`/
+`run_treg_arm_lifetime()`/`run_base_case()`. **Result:** cost rises identically for every arm;
+QALYs unchanged; NMB falls under the societal lens for every arm, since no offsetting productivity
+*benefit* of durable cure is modelled (a natural future extension, not attempted this pass).
+
+**S6 (Treg 2-dose) deliberately dropped, not deferred** — Eric + Claude Code agreed (2026-08-05)
+after reviewing it directly: no dosing-interval assumption for a second dose exists anywhere in
+this project's documentation, and the 2-dose design was already judged unfounded enough that the
+base case was changed to single-dose specifically because of it. Building new per-cycle-trace
+mechanics on top of an invented timing assumption isn't worth it unless a real anchor turns up.
+
+New `analysis/run_scenario_analyses.R` steps for both; `docs/analysis_plan.md` §10.3/§10.5
+updated. Full test suite: 728 assertions (up from 679), 0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,

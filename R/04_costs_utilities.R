@@ -215,6 +215,7 @@
 
 if (!exists("MAINTENANCE_STATES")) source("R/utils/transition_matrix.R")
 if (!exists("discount_factor")) source("R/02_markov_engine.R")
+if (!exists("load_population_utility_norms")) source("R/utils/population_utility.R")
 
 # ---- Health-state monitoring/management cost (Aliyev Appendix S2; analysis_plan.md §8) --------
 
@@ -239,6 +240,46 @@ INFLATION_2017_TO_2025 <- 1.3035
 #' effect of sourcing from Aliyev directly rather than from the arm-specific workbook rows.
 health_state_monitoring_costs <- function() {
   ALIYEV_MONITORING_COST_2017_USD * INFLATION_2017_TO_2025
+}
+
+# ---- Societal-perspective productivity cost (scenario S9, analysis_plan.md §4.1/§10.3) ---------
+#
+# Manceur et al. 2020 (J Med Econ, data/raw/manceur2020_productivity_cost.csv): $2,168 incremental
+# annual work-loss cost per Crohn's disease patient vs. matched non-IBD controls (claims-cohort
+# analysis, n=6,715 CD / 33,575 controls, ~5-year average follow-up). Applied as a FLAT per-cycle
+# addition to every living (non-Death) health state's monitoring cost, identically across every
+# arm -- the source figure is a population average over a real CD cohort's mixed active-disease/
+# remission experience, not stratified by momentary disease activity, so stratifying it by health
+# state here would fabricate a precision the source doesn't support (this project's whole
+# methodology exists to avoid exactly that). Whether Treg's own Sustained Deep Remission (cured)
+# state should be exempted from this cost -- paralleling the SDR-utility argument, S7, that a
+# durable cure removes the residual burden of managed disease -- is a stated, deliberately
+# undecided modelling choice: societal_monitoring_costs() below applies the flat addition to SDR
+# exactly like every other living state, the more conservative (larger societal-cost) choice,
+# and does not zero it out.
+ANNUAL_INDIRECT_COST_USD <- 2168
+
+#' Per-cycle productivity/indirect cost (2025-vintage, no separate inflation applied: Manceur et
+#' al.'s own study period runs through March 2017, comparable in currency-year terms to this
+#' project's other 2017-sourced Aliyev figures before the same INFLATION_2017_TO_2025 factor would
+#' apply -- but that factor is NOT applied here, a stated simplification: Manceur's own cost year
+#' is not cleanly identified in the source the way Aliyev's is, so inflating it would imply a
+#' precision this project doesn't actually have. Flagged, not silently assumed away.
+productivity_cost_per_cycle <- function(cycle_weeks = 2) {
+  ANNUAL_INDIRECT_COST_USD * cycle_weeks / 52
+}
+
+#' The societal-perspective variant of health_state_monitoring_costs() -- adds
+#' productivity_cost_per_cycle() to every living state, Death excluded (Death has no ongoing
+#' work-loss cost by construction). Scenario S9 (perspective: healthcare-sector vs. societal)
+#' is exactly the choice between passing this function's output or health_state_monitoring_costs()'s
+#' own output as the `monitoring_costs` argument everywhere that argument is already threaded
+#' (trace_costs(), attach_maintenance_costs_utilities(), attach_sdr_costs_utilities()) -- no
+#' changes needed to any of those functions themselves.
+societal_monitoring_costs <- function(cycle_weeks = 2) {
+  base <- health_state_monitoring_costs()
+  addition <- ifelse(names(base) == "Death", 0, productivity_cost_per_cycle(cycle_weeks))
+  base + addition
 }
 
 # ---- CT-track drug cost (Aliyev Appendix S2 item 18; A8 fix) ----------------------------------
@@ -648,12 +689,22 @@ attach_maintenance_costs_utilities <- function(arm_result, utilities, monitoring
 
 #' SDR-specific cost and QALYs (analysis_plan.md §6.2). `on_sdr` is a plain numeric vector
 #' (cycles 0..n), not a states matrix -- R/03_cure_fraction_module.R's own representation (SDR
-#' has no internal state structure). Utility = Remission's utility (base case only; the plan's
-#' general-population-utility scenario is not implemented here). Cost = Remission's monitoring
-#' cost, halved after `halve_after_cycle` (default the 2-year cap boundary, cycle 52 at this
-#' project's native 2-week cycle) -- explicitly "recommend...flag as assumption" in the plan text
-#' (§6.2), not an independently sourced figure. `drug_cost_by_cycle` is always all-zero: SDR
-#' patients are off therapy by definition, not an omission to fill in later.
+#' has no internal state structure). Utility = Remission's utility by default (the base case);
+#' Cost = Remission's monitoring cost, halved after `halve_after_cycle` (default the 2-year cap
+#' boundary, cycle 52 at this project's native 2-week cycle) -- explicitly "recommend...flag as
+#' assumption" in the plan text (§6.2), not an independently sourced figure. `drug_cost_by_cycle`
+#' is always all-zero: SDR patients are off therapy by definition, not an omission to fill in
+#' later.
+#'
+#' `sdr_utility = NULL` (default): use `utilities[["Remission"]]`, exactly as before this
+#' parameter existed -- fully backward compatible. Scenario S7 (§7.1 item 21, §10.3) passes a
+#' general-population utility value/schedule instead (R/utils/population_utility.R) -- either a
+#' single scalar (recycled across every cycle, R's own vector recycling, the right behaviour for
+#' the 6.15-year/10-year horizons which don't track attained age) or a length-(n_cycles+1) vector
+#' (a genuinely age-varying schedule, for the lifetime horizon). No shape-checking needed here:
+#' ordinary R recycling of a length-1 or length-(n_cycles+1) vector against `on_sdr` does the
+#' right thing either way; anything else would already be a caller error the multiplication itself
+#' would surface via a recycling-length warning.
 #'
 #' `half_cycle_correction` (default TRUE) -- SDR occupancy is exactly the same kind of
 #' continuously-accruing quantity as any other health state's (patients spend time IN it, same as
@@ -662,18 +713,18 @@ attach_maintenance_costs_utilities <- function(arm_result, utilities, monitoring
 #' separate rule invented for this function.
 attach_sdr_costs_utilities <- function(on_sdr, utilities, monitoring_costs, cycle_weeks = 2,
                                         annual_rate = 0.03, halve_after_cycle = 52,
-                                        half_cycle_correction = TRUE) {
+                                        half_cycle_correction = TRUE, sdr_utility = NULL) {
   n_cycles <- length(on_sdr) - 1
   cycles <- 0:n_cycles
   discount <- discount_factors_for_trace(n_cycles, cycle_weeks, annual_rate)
   weights <- if (half_cycle_correction) half_cycle_weights(n_cycles) else 1
-  remission_utility <- utilities[["Remission"]]
+  if (is.null(sdr_utility)) sdr_utility <- utilities[["Remission"]]
   remission_cost <- monitoring_costs[["Remission"]]
   cost_rate <- ifelse(cycles > halve_after_cycle, remission_cost / 2, remission_cost)
   non_drug_cost_by_cycle <- on_sdr * cost_rate * weights * discount
 
   list(
-    qalys_by_cycle = on_sdr * remission_utility * cycle_weeks / 52 * weights * discount,
+    qalys_by_cycle = on_sdr * sdr_utility * cycle_weeks / 52 * weights * discount,
     non_drug_cost_by_cycle = non_drug_cost_by_cycle,
     drug_cost_by_cycle = rep(0, n_cycles + 1),
     total_cost_by_cycle = non_drug_cost_by_cycle
@@ -692,9 +743,13 @@ attach_sdr_costs_utilities <- function(on_sdr, utilities, monitoring_costs, cycl
 #'
 #' `half_cycle_correction` (default TRUE) -- forwarded unchanged to both the Markov portion and
 #' the SDR portion, so the whole arm gets one consistent within-cycle treatment.
+#'
+#' `sdr_utility = NULL` (default) -- forwarded unchanged to attach_sdr_costs_utilities() (see its
+#' own docstring for scenario S7); the Markov (non-SDR) portion is unaffected either way, since
+#' the general-population-utility scenario is specifically about the SDR state's own utility.
 attach_treg_costs_utilities <- function(arm_result, utilities, monitoring_costs, cycle_weeks = 2,
                                          annual_rate = 0.03, halve_after_cycle = 52,
-                                         half_cycle_correction = TRUE) {
+                                         half_cycle_correction = TRUE, sdr_utility = NULL) {
   markov <- attach_maintenance_costs_utilities(
     list(on_biologic = arm_result$on_biologic, on_ct = arm_result$on_ct),
     utilities, monitoring_costs, cycle_weeks, annual_rate,
@@ -702,7 +757,7 @@ attach_treg_costs_utilities <- function(arm_result, utilities, monitoring_costs,
   )
   sdr <- attach_sdr_costs_utilities(
     arm_result$on_sdr, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle,
-    half_cycle_correction = half_cycle_correction
+    half_cycle_correction = half_cycle_correction, sdr_utility = sdr_utility
   )
   list(
     qalys_by_cycle = markov$qalys_by_cycle + sdr$qalys_by_cycle,

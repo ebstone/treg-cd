@@ -193,13 +193,21 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 #' `refractory_multipliers = NULL` (default): load once via load_refractory_multipliers(raw_dir);
 #' pass a pre-loaded list to avoid re-reading the CSV across many calls (same performance pattern
 #' as `utilities`/`schedule`/`prices` above).
+#'
+#' `perspective = "healthcare_sector"` (default, byte-identical to before this parameter existed):
+#' scenario S9 (analysis_plan.md §4.1/§10.3) is `perspective = "societal"`, which swaps in
+#' societal_monitoring_costs() (R/04_costs_utilities.R, Manceur et al. 2020-sourced productivity
+#' cost added to every living state) in place of health_state_monitoring_costs() -- the only
+#' change; no other part of this function's pipeline is affected, since the productivity cost is
+#' folded into the same `monitoring_costs` named vector every downstream call already consumes.
 run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                          cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE,
                                          cap_cycle = 52, raw_dir = "data/raw", proc_dir = "data/processed",
                                          utilities = NULL, induction_data = NULL, schedule = NULL,
                                          prices = NULL, baseline_age = NULL, life_table = NULL,
                                          half_cycle_correction = TRUE, refractory = FALSE,
-                                         refractory_multipliers = NULL) {
+                                         refractory_multipliers = NULL,
+                                         perspective = "healthcare_sector") {
   therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
   stopifnot(all(c(therapy, "CT") %in% names(matrices)))
 
@@ -237,7 +245,12 @@ run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg =
   }
 
   if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
-  monitoring_costs <- health_state_monitoring_costs()
+  perspective <- match.arg(perspective, c("healthcare_sector", "societal"))
+  monitoring_costs <- if (perspective == "societal") {
+    societal_monitoring_costs(cycle_weeks)
+  } else {
+    health_state_monitoring_costs()
+  }
   if (is.null(schedule)) schedule <- load_dosing_schedule(raw_dir)
   if (is.null(prices)) prices <- load_drug_prices(raw_dir)
 
@@ -310,6 +323,20 @@ treg_price_dependent_dose_cost <- function(price_usd, cyclophosphamide_dose_mg =
 #' before this call's own induction/maintenance run -- `matrices[["UST"]]` itself is never
 #' mutated, so the real UST comparator arm (run_comparator_arm_lifetime()) is unaffected even when
 #' this function and that one share the same `matrices` list in the same caller.
+#'
+#' `perspective = "healthcare_sector"` (default) -- same meaning as
+#' run_comparator_arm_lifetime()'s equivalent parameter (scenario S9); applies identically here
+#' since societal_monitoring_costs() is a property of the health state, not the arm.
+#'
+#' `sdr_utility_source = "remission"` (default, byte-identical to before this parameter existed):
+#' scenario S7 (analysis_plan.md §6.2/§7.1 item 21/§10.3) is `sdr_utility_source =
+#' "general_population"`, which computes a general-population utility value/schedule
+#' (R/utils/population_utility.R) and passes it to attach_treg_costs_utilities()'s `sdr_utility`
+#' argument instead of leaving it NULL (which defaults to Remission's own utility there). Uses
+#' `baseline_age` when supplied (a genuinely age-varying, cycle-by-cycle schedule for the lifetime
+#' horizon) or a single reference-age value otherwise (the 6.15-year/10-year horizons, which don't
+#' track attained age at all) -- population_utility.R's own function handles both cases via one
+#' call, no branching needed here.
 run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices,
                                    weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                    annual_rate = 0.03, landmark_cycle = 28, cap_cycle = 52,
@@ -318,7 +345,9 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
                                    proc_dir = "data/processed", utilities = NULL,
                                    induction_data = NULL, prices = NULL, baseline_age = NULL,
                                    life_table = NULL, half_cycle_correction = TRUE,
-                                   relapse_destination = "Mild", non_cured_hazard_ratio = 1) {
+                                   relapse_destination = "Mild", non_cured_hazard_ratio = 1,
+                                   perspective = "healthcare_sector",
+                                   sdr_utility_source = "remission") {
   stopifnot(all(c("UST", "CT") %in% names(matrices)))
 
   if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
@@ -348,10 +377,23 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
   }
 
   if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
-  monitoring_costs <- health_state_monitoring_costs()
+  perspective <- match.arg(perspective, c("healthcare_sector", "societal"))
+  monitoring_costs <- if (perspective == "societal") {
+    societal_monitoring_costs(cycle_weeks)
+  } else {
+    health_state_monitoring_costs()
+  }
+
+  sdr_utility_source <- match.arg(sdr_utility_source, c("remission", "general_population"))
+  sdr_utility <- if (sdr_utility_source == "general_population") {
+    general_population_utility_schedule(n_cycles, cycle_weeks, baseline_age, raw_dir = raw_dir)
+  } else {
+    NULL
+  }
+
   attached <- attach_treg_costs_utilities(
     arm, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle = cap_cycle,
-    half_cycle_correction = half_cycle_correction
+    half_cycle_correction = half_cycle_correction, sdr_utility = sdr_utility
   )
 
   if (is.null(prices)) prices <- load_drug_prices(raw_dir)
@@ -402,17 +444,26 @@ best_comparator_nmb <- function(comparator_summaries, wtp_usd) {
 #' `comparator_therapies = c("UST", "IFX")` -- ADA excluded -- without needing a separate
 #' function; CT and TREG are unaffected either way (CT is not itself a comparator arm, and TREG's
 #' own non-cured track is UST-equivalent regardless of which arms this call reports).
+#'
+#' `perspective = "healthcare_sector"` and `sdr_utility_source = "remission"` (both default,
+#' fully backward compatible): forwarded unchanged to every arm's own
+#' run_comparator_arm_lifetime()/run_treg_arm_lifetime() call (see their own docstrings) --
+#' scenarios S9 and S7 respectively. Both apply to every arm in the same call (all arms report
+#' under the same perspective; `sdr_utility_source` only actually changes TREG's own row, since
+#' comparator arms have no SDR state at all).
 run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                            cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
                            raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,
-                           life_table = NULL, comparator_therapies = COMPARATOR_THERAPIES) {
+                           life_table = NULL, comparator_therapies = COMPARATOR_THERAPIES,
+                           perspective = "healthcare_sector", sdr_utility_source = "remission") {
   matrices <- build_all_transition_matrices(raw_dir)
 
   comparator_summaries <- stats::setNames(
     lapply(comparator_therapies, function(tx) {
       run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
                                    apply_cap, cap_cycle, raw_dir, proc_dir,
-                                   baseline_age = baseline_age, life_table = life_table)
+                                   baseline_age = baseline_age, life_table = life_table,
+                                   perspective = perspective)
     }),
     comparator_therapies
   )
@@ -422,7 +473,8 @@ run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PAT
     n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
     weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
     cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
-    baseline_age = baseline_age, life_table = life_table
+    baseline_age = baseline_age, life_table = life_table, perspective = perspective,
+    sdr_utility_source = sdr_utility_source
   )
 
   all_summaries <- c(comparator_summaries, list(TREG = treg_summary))
