@@ -42,6 +42,12 @@
 #      reweighting of the SAME PSA draws already produced in step 3 (R/07 evppi_prior_sensitivity())
 #      -- no new simulation. Reports the ranking-is-stable-but-level-is-prior-dependent finding the
 #      memo asks for.
+#   9. Refractory-population scenario (S3, added 2026-08-05, resolutions memo sec 11 item 6):
+#      run_refractory_scenario() (R/05) -- UST/IFX/ADA's induction and maintenance matrices
+#      adjusted by multipliers sourced from UNITI-1 vs UNITI-2 (R/utils/refractory_multipliers.R),
+#      run at the same 6.15-year horizon as step 1. CT and TREG are unaffected by design (that
+#      file's own header); surgery-hazard elevation for the refractory population is explicitly
+#      NOT part of this pass, a flagged gap, not an oversight.
 #
 # Half-cycle correction (A12, docs/model_audit_v6.md; analysis_plan.md sec 4.1) also landed
 # 2026-08-05, same day as steps 7-8 -- but needed NO change to this script at all:
@@ -51,9 +57,8 @@
 #
 # Explicitly OUT of scope for this pass, same as prior module-level passes flagged in their own
 # headers: any figure (README: ggplot2-vs-base-graphics plotting decision not yet made -- tables
-# only here), the structural scenarios S1-S12 (analysis/run_scenario_analyses.R, still a stub),
-# half-cycle correction (A12), and refractory-population multipliers -- still open per the
-# resolutions memo's own priority order (README.md's Status section).
+# only here), the structural scenarios S1, S2, S4-S12 (analysis/run_scenario_analyses.R, still a
+# stub) -- S3 is now covered by step 9 above -- and discount-rate/societal-perspective scenarios.
 
 source("R/utils/transition_matrix.R")
 source("R/00_derive_transition_probs.R")
@@ -80,18 +85,18 @@ write_table <- function(df, name) {
 }
 
 # ---- 1. Base case ---------------------------------------------------------------------------
-cat("=== 1/8: Base case ===\n")
+cat("=== 1/9: Base case ===\n")
 base_case <- run_base_case()
 print(base_case, row.names = FALSE)
 write_table(base_case, "base_case_results.csv")
 
 # ---- 2. Headroom frontier (Aim 4) ------------------------------------------------------------
-cat("\n=== 2/8: Headroom frontier (Aim 4) ===\n")
+cat("\n=== 2/9: Headroom frontier (Aim 4) ===\n")
 frontier <- do.call(rbind, lapply(WTP_GRID, function(w) headroom_frontier(PRICE_GRID, w)))
 write_table(frontier, "headroom_frontier.csv")
 
 # ---- 3. PSA: draws, CE plane, CEAC ------------------------------------------------------------
-cat("\n=== 3/8: PSA (10,000 draws; this is the slow step, ~3-4 min) ===\n")
+cat("\n=== 3/9: PSA (10,000 draws; this is the slow step, ~3-4 min) ===\n")
 psa_results <- run_psa(n_draws = 10000)
 write_table(psa_results, "psa_draws.csv")
 
@@ -108,7 +113,7 @@ ceac <- psa_ceac(psa_results, ceac_grid)
 write_table(ceac, "psa_ceac.csv")
 
 # ---- 4. EVPI / EVPPI --------------------------------------------------------------------------
-cat("\n=== 4/8: EVPI surface + EVPPI by subset ===\n")
+cat("\n=== 4/9: EVPI surface + EVPPI by subset ===\n")
 evpi_wtp_grid <- seq(0, 300000, by = 25000)
 evpi_surf <- evpi_surface(psa_results, PRICE_GRID, evpi_wtp_grid)
 write_table(evpi_surf, "evpi_surface.csv")
@@ -122,7 +127,7 @@ evppi_conv <- evppi_convergence(psa_results, "pi_sdr", WTP_PRIMARY, convergence_
 write_table(evppi_conv, "evppi_convergence_subset_A.csv")
 
 # ---- 5. EJP (deterministic + probabilistic) + gross margin over COGS --------------------------
-cat("\n=== 5/8: EJP ===\n")
+cat("\n=== 5/9: EJP ===\n")
 ejp_det <- do.call(rbind, lapply(WTP_GRID, function(w) {
   do.call(rbind, lapply(PI_GRID, function(pi) {
     res <- ejp_deterministic(pi, w)
@@ -145,7 +150,7 @@ print(ejp_prob, row.names = FALSE)
 write_table(ejp_prob, "ejp_probabilistic.csv")
 
 # ---- 6. Lifetime horizon (deterministic only this pass -- see module header) -------------------
-cat("\n=== 6/8: Lifetime horizon (deterministic base case + headroom frontier) ===\n")
+cat("\n=== 6/9: Lifetime horizon (deterministic base case + headroom frontier) ===\n")
 base_case_lifetime <- run_base_case(n_cycles = HORIZON_CYCLES_LIFETIME, baseline_age = ASSUMED_PATIENT_AGE_YEARS)
 print(base_case_lifetime, row.names = FALSE)
 write_table(base_case_lifetime, "base_case_results_lifetime.csv")
@@ -168,7 +173,7 @@ print(headroom_at_sourced_price, row.names = FALSE)
 write_table(headroom_at_sourced_price, "headroom_at_sourced_price_lifetime.csv")
 
 # ---- 7. h sweep: (pi, T, price) headroom surface + the pi*g(h) factorisation check ------------
-cat("\n=== 7/8: h sweep (relapse duration T) at the lifetime horizon ===\n")
+cat("\n=== 7/9: h sweep (relapse duration T) at the lifetime horizon ===\n")
 # A coarser price grid than PRICE_GRID (11 points, not 21): this section multiplies price x WTP x
 # duration (11 x 3 x 5 = 165 headroom_pi_star() evaluations, each a full lifetime-horizon Markov
 # trace) rather than PRICE_GRID's own price x WTP (63) -- kept coarser so this section's added
@@ -192,12 +197,24 @@ cat("pi * g(h) factorisation check (max relative error across the pi grid): ",
 write_table(pi_factorization_check, "pi_factorization_check.csv")
 
 # ---- 8. pi prior-sensitivity on EVPPI --------------------------------------------------------
-cat("\n=== 8/8: pi prior-sensitivity on EVPPI ===\n")
+cat("\n=== 8/9: pi prior-sensitivity on EVPPI ===\n")
 # Re-estimates evppi_by_subset() (already computed once, unweighted, in step 4) under Beta(1,3)
 # and Beta(2,2) alternative priors for pi via importance reweighting of the SAME psa_results
 # drawn in step 3 -- no new simulation (R/07's own module header, sec 3.2).
 evppi_priors <- evppi_prior_sensitivity(psa_results, WTP_PRIMARY)
 print(evppi_priors[, c("prior", "subset", "evppi", "rank_within_prior")], row.names = FALSE)
 write_table(evppi_priors, "evppi_prior_sensitivity.csv")
+
+# ---- 9. Refractory-population scenario (S3, added 2026-08-05) -------------------------------
+cat("\n=== 9/9: Refractory-population scenario (S3) ===\n")
+# run_refractory_scenario() (R/05, module header) -- the biologic_naive rows reproduce step 1's
+# base_case exactly; the refractory rows apply the UNITI-1-vs-UNITI-2-sourced multipliers
+# (R/utils/refractory_multipliers.R) to UST/IFX/ADA's induction and maintenance matrices only
+# (CT and TREG are unaffected -- see that file's own header for why). Run at the same 6.15-year
+# horizon as the base case (step 1), not the lifetime horizon -- consistent with every other
+# per-arm scenario this script reports outside steps 6-8.
+refractory_scenario <- run_refractory_scenario()
+print(refractory_scenario, row.names = FALSE)
+write_table(refractory_scenario, "refractory_scenario_results.csv")
 
 cat("\nDone. All tables in output/tables/.\n")

@@ -81,10 +81,12 @@
 # - Discount-rate scenarios (0%/1.5%/5%, §4.1) and the societal-perspective scenario -- the plumbing
 #   (annual_rate is already a parameter throughout) supports them; no orchestration wrapper exists
 #   yet to run and report them as named scenarios.
-# - Refractory-population co-primary scenario (Decision 3) -- needs the sourced multipliers Gate 3
-#   is responsible for; not available yet.
-# - S1-S12 structural scenarios (§10.3, analysis/run_scenario_analyses.R) beyond the no-cap variant
-#   that run_maintenance_arm(apply_cap = FALSE) already gives for free.
+# - S1, S2, S4-S12 structural scenarios (§10.3, analysis/run_scenario_analyses.R) beyond the no-cap
+#   variant that run_maintenance_arm(apply_cap = FALSE) already gives for free, and beyond S3
+#   (refractory-population co-primary scenario, Decision 3) -- implemented 2026-08-05,
+#   run_refractory_scenario() below, using UNITI-1-vs-UNITI-2-sourced multipliers
+#   (R/utils/refractory_multipliers.R). Surgery-hazard elevation for the refractory population is
+#   explicitly NOT part of that implementation -- see that file's own module header.
 
 if (!exists("MAINTENANCE_STATES")) source("R/utils/transition_matrix.R")
 if (!exists("load_published_induction")) source("R/00_derive_transition_probs.R")
@@ -92,6 +94,7 @@ if (!exists("run_decision_tree")) source("R/01_decision_tree.R")
 if (!exists("run_maintenance_arm")) source("R/02_markov_engine.R")
 if (!exists("run_treg_arm")) source("R/03_cure_fraction_module.R")
 if (!exists("summarise_arm")) source("R/04_costs_utilities.R")
+if (!exists("load_refractory_multipliers")) source("R/utils/refractory_multipliers.R")
 
 # ---- Horizons and thresholds ---------------------------------------------------------------------
 
@@ -179,27 +182,52 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 #' attach_maintenance_costs_utilities(); `FALSE` reproduces the exact pre-2026-08-05 uncorrected
 #' behaviour (R/04_costs_utilities.R's trace_qalys()/trace_costs() docstrings), e.g. for a
 #' comparability scenario against results computed before this correction existed.
+#'
+#' `refractory = FALSE` (default): reproduces the exact biologic-naive base case, byte-identical,
+#' unaffected by anything in this paragraph. `refractory = TRUE` runs Decision 3 / scenario S3
+#' instead (analysis_plan.md §10.3) -- the induction row and the therapy's own maintenance matrix
+#' (CT's matrix is left untouched; R/utils/refractory_multipliers.R's module header explains why)
+#' are both adjusted via the UNITI-1-vs-UNITI-2-sourced multipliers before the same downstream
+#' pipeline runs, so cost/utility attachment, the M-S cap-switch to CT, and mortality all still
+#' apply exactly as in the naive case -- only the two therapy-specific matrices differ.
+#' `refractory_multipliers = NULL` (default): load once via load_refractory_multipliers(raw_dir);
+#' pass a pre-loaded list to avoid re-reading the CSV across many calls (same performance pattern
+#' as `utilities`/`schedule`/`prices` above).
 run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                          cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE,
                                          cap_cycle = 52, raw_dir = "data/raw", proc_dir = "data/processed",
                                          utilities = NULL, induction_data = NULL, schedule = NULL,
                                          prices = NULL, baseline_age = NULL, life_table = NULL,
-                                         half_cycle_correction = TRUE) {
+                                         half_cycle_correction = TRUE, refractory = FALSE,
+                                         refractory_multipliers = NULL) {
   therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
   stopifnot(all(c(therapy, "CT") %in% names(matrices)))
 
   if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
   induction_row <- induction_data[induction_data$therapy == therapy, ]
+
+  therapy_matrix <- matrices[[therapy]]
+  if (refractory) {
+    if (is.null(refractory_multipliers)) refractory_multipliers <- load_refractory_multipliers(raw_dir)
+    induction_row <- apply_refractory_multiplier_induction(
+      induction_row, refractory_multipliers$induction_response_multiplier,
+      refractory_multipliers$induction_remission_multiplier
+    )
+    therapy_matrix <- apply_refractory_multiplier_maintenance(
+      therapy_matrix, refractory_multipliers$maintenance_remission_multiplier_cumulative,
+      refractory_multipliers$maintenance_cumulative_n_cycles
+    )
+  }
   split <- run_decision_tree(induction_row)
 
   if (is.null(baseline_age)) {
     arm <- run_maintenance_arm(
-      matrices[[therapy]], matrices[["CT"]], split$initial_on_biologic, n_cycles,
+      therapy_matrix, matrices[["CT"]], split$initial_on_biologic, n_cycles,
       cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = split$initial_on_ct
     )
   } else {
     arm <- run_maintenance_arm_with_mortality(
-      matrices[[therapy]], matrices[["CT"]], split$initial_on_biologic, n_cycles,
+      therapy_matrix, matrices[["CT"]], split$initial_on_biologic, n_cycles,
       baseline_age = baseline_age, cap_cycle = cap_cycle, apply_cap = apply_cap,
       initial_on_ct = split$initial_on_ct, life_table = life_table, raw_dir = raw_dir,
       cycle_weeks = cycle_weeks
@@ -368,7 +396,14 @@ run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PAT
   )
 
   all_summaries <- c(comparator_summaries, list(TREG = treg_summary))
+  summaries_to_results_table(all_summaries)
+}
 
+#' Shared row-builder behind run_base_case() and run_refractory_scenario(): one row per named
+#' arm summary (intervention, qalys, total_cost, NMB at each WTP threshold). Pulled out of
+#' run_base_case() when the refractory scenario needed the identical table shape -- this function
+#' itself changed nothing about run_base_case()'s own output, just where the code lives.
+summaries_to_results_table <- function(all_summaries, extra_cols = list()) {
   rows <- lapply(names(all_summaries), function(nm) {
     s <- all_summaries[[nm]]
     nmb_cols <- stats::setNames(
@@ -378,9 +413,59 @@ run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PAT
       # it -- not obviously wrong until you go looking for "nmb_at_100000" and it isn't there.
       paste0("nmb_at_", format(WTP_THRESHOLDS_USD, scientific = FALSE, trim = TRUE))
     )
-    c(list(intervention = nm, qalys = s$qalys, total_cost = s$total_cost), nmb_cols)
+    c(extra_cols, list(intervention = nm, qalys = s$qalys, total_cost = s$total_cost), nmb_cols)
   })
   do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
+}
+
+# ---- Refractory-population scenario (Decision 3 / S3) ----------------------------------------
+
+#' Scenario S3 (analysis_plan.md §10.3, Decision 3): the same base-case pipeline run twice, once
+#' on Aliyev's published biologic-naive matrices (population = "biologic_naive", identical to
+#' run_base_case()'s own numbers) and once with UST/IFX/ADA's induction and maintenance matrices
+#' adjusted by the UNITI-1-vs-UNITI-2-sourced refractory multipliers
+#' (R/utils/refractory_multipliers.R; population = "refractory"). CT and TREG are unaffected in
+#' both rows -- CT has no refractory-specific data sourced this pass (module header,
+#' R/utils/refractory_multipliers.R), and Treg's own reference clinical programme is already a
+#' refractory population by design (analysis_plan.md §3), so nothing about its parameterisation
+#' changes between the two rows; its TREG row is included at the same pi=0 floor run_base_case()
+#' uses, purely so both scenario's tables are directly NMB-comparable arm-for-arm.
+#'
+#' Returns one combined table (rbind of the two population's own summaries_to_results_table()
+#' output) with a leading `population` column -- deliberately not two separate return values, so
+#' a caller (or a written-out CSV) can group_by(population) directly rather than needing two
+#' objects kept in sync.
+run_refractory_scenario <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
+                                     cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
+                                     raw_dir = "data/raw", proc_dir = "data/processed",
+                                     baseline_age = NULL, life_table = NULL) {
+  matrices <- build_all_transition_matrices(raw_dir)
+  refractory_multipliers <- load_refractory_multipliers(raw_dir)
+  treg_price <- load_treg_dose_acquisition_cost(proc_dir)
+
+  run_one_population <- function(refractory_flag) {
+    comparator_summaries <- stats::setNames(
+      lapply(COMPARATOR_THERAPIES, function(tx) {
+        run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
+                                     apply_cap, cap_cycle, raw_dir, proc_dir,
+                                     baseline_age = baseline_age, life_table = life_table,
+                                     refractory = refractory_flag,
+                                     refractory_multipliers = refractory_multipliers)
+      }),
+      COMPARATOR_THERAPIES
+    )
+    treg_summary <- run_treg_arm_lifetime(
+      n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
+      weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
+      cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
+      baseline_age = baseline_age, life_table = life_table
+    )
+    all_summaries <- c(comparator_summaries, list(TREG = treg_summary))
+    population_label <- if (refractory_flag) "refractory" else "biologic_naive"
+    summaries_to_results_table(all_summaries, extra_cols = list(population = population_label))
+  }
+
+  rbind(run_one_population(FALSE), run_one_population(TRUE))
 }
 
 # ---- Headroom frontier (Aim 4) ---------------------------------------------------------------------

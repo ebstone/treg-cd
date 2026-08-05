@@ -155,6 +155,41 @@ For the refractory scenario, do **not** attempt to re-derive refractory transiti
 
 The manuscript must state explicitly that no Treg parameter is derived from the ongoing Crohn's trial, that the trial population differs from the modelled base-case population, and that the trial is cited only to establish that the modelled technology class is in clinical development. This belongs in Methods, not only in Limitations.
 
+### 5.4 Refractory multipliers: implementation note (2026-08-05)
+
+§5.2's recommended method — explicit, sourced multipliers rather than a re-derived refractory
+model — is now implemented for response and remission (`R/utils/refractory_multipliers.R`,
+`R/05_deterministic_results.R`'s `run_refractory_scenario()`). Source: UNITI-1 vs. UNITI-2
+(Feagan et al. 2016, NEJM) — the same trial programme §5.1 already names as (part of) Aliyev's
+own naive-population evidence base, which is exactly why this pair was chosen over an unrelated
+second-line cohort: same drug, same doses, same endpoints, same investigators, differing only in
+which patients were eligible (UNITI-1: primary/secondary anti-TNF nonresponse; UNITI-2:
+conventional-therapy failure, 68.6% anti-TNF-naive). Two multipliers, both ustekinumab-specific
+but applied to IFX/ADA's matrices too as a stated cross-drug proxy (no equivalently clean paired
+refractory/naive trial design exists for either): induction response/remission (week 8, 6 mg/kg
+IV) and maintenance remission (IM-UNITI week 44, 90 mg SC q8w, converted from its 36-week
+cumulative figure to a per-2-week-cycle multiplier before use — see that file's own header for
+why). Applied to UST/IFX/ADA's own induction and maintenance matrices only; CT's matrix and
+Treg's own parameterisation are unaffected (Treg's reference clinical programme is already a
+refractory population, per §5.1, so nothing about it needs adjusting for this scenario).
+
+**Explicitly not included in this pass, a real flagged gap, not an oversight**: elevated surgery
+hazard (the other half of §5.2's own recommendation). No equivalently clean paired
+refractory-vs-naive surgery-rate data was found in the same trial programme in the time available;
+a future pass could source one separately (e.g. from a dedicated post-anti-TNF-failure surgical
+cohort) rather than reusing UNITI's own surgery data, which the induction trials weren't powered
+or designed to report by prior-treatment-failure subgroup.
+
+**Result, 6.15-year horizon** (`output/tables/refractory_scenario_results.csv`,
+`analysis/run_full_analysis.R` step 9): QALYs fall for all three comparators under the refractory
+adjustment, as expected (worse response/remission). Total cost also falls, for all three — a real,
+non-obvious mechanical consequence, not a bug: patients who fail to achieve or hold remission
+switch to the CT track more often, and CT is markedly cheaper than continuing branded-biologic
+therapy, so the cost saved by more frequent CT-switching outweighs the extra cost of more relapse/
+non-response cycles at this project's current CT/biologic price gap. Net effect on NMB is small
+and mixed by comparator/WTP in this pass's numbers — worth a sentence in Results, not a headline
+finding on its own.
+
 ---
 
 ## 6. Model structure
@@ -454,7 +489,7 @@ One-way analysis across all parameters in Section 7.1 over their credible ranges
 |---|---|---|
 | S1 | 2-year maintenance cap: on vs. off | Decision 1; materially moves the result |
 | S2 | ADA included vs. excluded | Decision 2 |
-| S3 | Biologic-naïve vs. refractory population | Decision 3 |
+| S3 | Biologic-naïve vs. refractory population | Decision 3 — **implemented 2026-08-05, §5.4**; response/remission multipliers only, run at the 6.15-year horizon (`run_refractory_scenario()`, `output/tables/refractory_scenario_results.csv`); surgery-hazard elevation not yet sourced |
 | S4 | Cure-fraction anchor: optimistic / moderate / pessimistic / null | Decision 4 |
 | S5 | Time horizon: lifetime / 10-year / 6.15-year | Tests the truncation critique directly and reproduces the current draft — **lifetime arm implemented 2026-08-05, §4.3**; deterministic base case and headroom frontier only (PSA/EVPI/EVPPI/probabilistic EJP still 6.15-year) |
 | S6 | Treg dosing: 1 dose vs. 2 doses | Current draft assumes 2; the reference clinical programme is a single infusion |

@@ -288,6 +288,35 @@ relative to the uncorrected figure, never raise it (full reasoning: A12's own en
 `half_cycle_correction = FALSE` to keep testing the raw per-cycle formula they were written to
 check. Full test suite: 474 assertions (up from 461), 0 failures.
 
+**Refractory-population scenario (S3) implemented (2026-08-05)**, closing Decision 3
+(`docs/analysis_plan.md` §5.2/§5.4) — the resolutions memo's own priority-order item 6. New
+`R/utils/refractory_multipliers.R` sources response and remission multipliers from UNITI-1 vs.
+UNITI-2 (Feagan et al. 2016, NEJM) — the same trial programme Aliyev's own naive-population
+parameters partly draw from (§5.1), and the cleanest available pairing since both trials share
+drug, dose and endpoint, differing only in prior-anti-TNF-failure eligibility. Two multipliers
+(induction response/remission at week 8, 6 mg/kg; maintenance remission at IM-UNITI week 44, q8w,
+converted to a per-2-week-cycle multiplier before use, the same "one multiplicative step per cycle"
+design as `age_adjust_matrix()`) are applied to UST/IFX/ADA's own induction and maintenance
+matrices — `apply_refractory_multiplier_induction()` shrinks total response and remission
+separately then rebuilds the response-only remainder, floor-clamped so remission can never exceed
+total response; `apply_refractory_multiplier_maintenance()` shrinks each row's flow into Remission
+and moves the removed mass into Mild, preserving row-stochasticity exactly. CT's matrix and Treg's
+own parameterisation are unaffected — Treg's own reference clinical programme is already a
+refractory population by design, so nothing about it needs adjusting for this scenario.
+`R/05_deterministic_results.R`'s `run_comparator_arm_lifetime()` gained an opt-in
+`refractory`/`refractory_multipliers` pair (`FALSE`/`NULL` default: byte-identical to the
+pre-existing behaviour, verified by a dedicated test); new `run_refractory_scenario()` runs both
+populations end to end and returns one combined table
+(`output/tables/refractory_scenario_results.csv`, `analysis/run_full_analysis.R` step 9/9).
+**Explicitly not included, a flagged gap**: elevated surgery hazard (the other half of Decision
+3's own recommended method) — no equivalently clean paired refractory-vs-naive surgery-rate data
+was found in the same trial programme in the time available. **Result, 6.15-year horizon:** QALYs
+fall for all three comparators under the refractory adjustment, as expected; total cost also
+falls for all three, a real (not a bug) mechanical consequence of more frequent CT-switching being
+cheaper than continuing branded-biologic therapy at this project's current CT/biologic price gap
+— net NMB effect is small and mixed by comparator/WTP threshold. `docs/analysis_plan.md` §5.4/§10.3
+updated. Full test suite: 536 assertions (up from 474), 0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,
