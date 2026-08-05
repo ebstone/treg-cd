@@ -93,6 +93,35 @@ wall-clock time by roughly a third by not re-reading the same three CSVs on ever
 ~40,000 arm-runner calls a full PSA makes); fully backward-compatible, all existing R/05 tests
 still pass unchanged. 14 new tests (78 passing total).
 
+`R/07_evpi_evppi.R` (first pass, 2026-08-05): EVPI and EVPPI for exactly the parameters
+`R/06_psa.R` samples (π, Treg price, the utility chain) and their unions — EVPPI for a held-fixed
+parameter is undefined by construction (A14), not a choice this module is deferring. Two distinct
+EVPI framings, both requested by analysis_plan.md and kept explicitly separate: `evpi_surface()`
+(§9.2) fixes Treg's price at each grid point (exploiting `treg_price_dependent_dose_cost()`'s
+exact linearity in price — an algebraic cost swap, no re-simulation needed) and reports per-patient
+EVPI over the remaining uncertainty, as a price × λ surface; `evppi_by_subset()` (§9.3) instead
+treats price as one of the genuinely uncertain parameters (its actual sampled Gamma draws, no
+override) and decomposes the REFERENCE-case total EVPI by subset (A/C/E and their unions — B/D/F/G
+are undefined, same reason as above). `population_evpi()` implements the §9.4 formula but takes
+`effective_population` as a required argument with no default — the fractions Decision 6 needs to
+compute a real number aren't sourced yet, so none is invented. **Environment gap, not a design
+choice:** analysis_plan.md §9.3 specifies the `voi` package (cross-checked against `BCEA::evppi()`,
+SPDE-INLA for higher-dimensional subsets); neither `voi` nor `BCEA` can be installed in this
+sandbox — their own dependencies (`earth`, `mvtnorm`) need `gfortran`, which isn't present, and
+`INLA` isn't on CRAN at all. `evppi_gam()` implements the same underlying method (Strong, Oakley &
+Brennan 2014 nonparametric regression) directly against `mgcv` instead, which ships with every
+standard R install; `cross_check_voi()` is written and ready for an environment with a working
+Fortran toolchain, but inert here. A real performance cliff was found and fixed while building
+this: `mgcv::te()`'s default per-margin basis makes its total basis grow as roughly k^d — fine at
+1-2 parameters, but a direct 4-parameter fit was still running after 5 minutes on 2,000 draws.
+`reduce_for_gam()` PCA-reduces any subset over 2 raw parameters to 2 components first (per
+analysis_plan.md §9.3's own suggestion), and `evppi_gam()` caps `te()`'s basis size as a backstop
+for any direct caller that skips pre-reduction. **Known artifact of that shortcut, documented
+where it's used:** a PCA-reduced superset can score BELOW an unreduced subset it contains (more
+raw parameters diluted into the same 2 components can lose more signal than fewer parameters kept
+at full resolution) — true EVPPI is monotone in the subset, this approximation isn't guaranteed to
+be. 15 new tests (93 passing total).
+
 **Market-comparator context added 2026-08-05** (not a model parameter, not part of any Gate):
 `data/raw/market_comparator_cell_therapy_prices.csv` records two real allogeneic-cell-therapy
 prices — Ryoncil ($194,000/infusion, Mesoblast's FDA-approved MSC therapy) and

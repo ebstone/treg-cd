@@ -188,8 +188,16 @@ sample_dirichlet_row <- function(n_draws, probs, concentration) {
 #' so this is a documented modelling choice, not an attempt to hide seed-sensitivity; pass `NULL`
 #' to disable and get a fresh draw set each call.
 #'
-#' Returns one row per (draw, arm): draw index, intervention, qalys, total_cost, plus that draw's
-#' sampled pi and treg_price (NA for the three comparators, which don't depend on either).
+#' Returns one row per (draw, arm): draw index, intervention, qalys, total_cost, that draw's
+#' sampled pi and treg_price (NA for the three comparators, which don't depend on either), and
+#' that draw's 5 raw sampled utility-chain values (util_modsev/util_resp/util_mild/
+#' util_remission/util_surgery, same variable_name convention as
+#' data/processed/model_health_utilities.csv) -- recorded on EVERY row, comparators included,
+#' since utility applies identically to every arm within a draw, not just Treg.
+#' R/07_evpi_evppi.R's subset-E EVPPI needs these raw values directly; qalys/total_cost alone
+#' don't let you regress net benefit against "how favourable was this draw's utility draw",
+#' only against the CONSEQUENCE of that draw, which is exactly the effect you're trying to
+#' explain, not a usable predictor.
 run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                      cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
                      raw_dir = "data/raw", proc_dir = "data/processed", seed = 20260805) {
@@ -213,14 +221,21 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
   k <- 0
   for (i in seq_len(n_draws)) {
     utilities_i <- utility_draws[i, ]
+    util_cols <- list(
+      util_modsev = unname(utilities_i[["Moderate-Severe"]]),
+      util_resp = unname(utilities_i[["Moderate-Severe Responder"]]),
+      util_mild = unname(utilities_i[["Mild"]]),
+      util_remission = unname(utilities_i[["Remission"]]),
+      util_surgery = unname(utilities_i[["Surgery"]])
+    )
 
     for (tx in COMPARATOR_THERAPIES) {
       s <- run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
                                         apply_cap, cap_cycle, raw_dir, proc_dir, utilities = utilities_i,
                                         induction_data = induction_data, schedule = schedule, prices = prices)
       k <- k + 1
-      rows[[k]] <- data.frame(draw = i, intervention = tx, qalys = s$qalys, total_cost = s$total_cost,
-                               pi_sdr = NA_real_, treg_price = NA_real_)
+      rows[[k]] <- c(list(draw = i, intervention = tx, qalys = s$qalys, total_cost = s$total_cost,
+                           pi_sdr = NA_real_, treg_price = NA_real_), util_cols)
     }
 
     treg <- run_treg_arm_lifetime(n_cycles, pi_draws[i], relapse_hazard_annual = 0, price_draws[i],
@@ -228,11 +243,11 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
                                    apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
                                    utilities = utilities_i, induction_data = induction_data, prices = prices)
     k <- k + 1
-    rows[[k]] <- data.frame(draw = i, intervention = "TREG", qalys = treg$qalys, total_cost = treg$total_cost,
-                             pi_sdr = pi_draws[i], treg_price = price_draws[i])
+    rows[[k]] <- c(list(draw = i, intervention = "TREG", qalys = treg$qalys, total_cost = treg$total_cost,
+                         pi_sdr = pi_draws[i], treg_price = price_draws[i]), util_cols)
   }
 
-  do.call(rbind, rows)
+  do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
 }
 
 # ---- Summaries: cost-effectiveness plane and CEAC ------------------------------------------------
