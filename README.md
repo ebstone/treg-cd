@@ -30,11 +30,12 @@ acquisition + administration costs (induction and maintenance, both dose size an
 frequency, sourced from the STELARA/REMICADE Prescribing Information —
 `data/raw/biologic_dosing_schedule.csv`) landed 2026-08-04 (second pass), deliberately excluding
 Treg's non-cured track (efficacy-equivalent to UST, but never actually charged UST's drug cost —
-see the module's header comment). ADA's dosing schedule is now also sourced (same file, third
-pass, 2026-08-04 — HUMIRA Prescribing Information) but its drug-cost layer is not yet wired in:
-unlike UST/IFX, ADA has no applicable CMS Part-B ASP price (it's entirely self-administered SC),
-so a NADAC/WAC-based price still needs sourcing first. Treg's own one-time/two-dose acquisition
-cost is also still not wired in.
+see the module's header comment). ADA's dosing schedule was sourced and its drug-cost layer wired
+in the same day (third/fourth pass, 2026-08-04 — HUMIRA Prescribing Information; priced via CMS
+Medicaid's NADAC rather than ASP, since adalimumab is entirely self-administered SC with no
+applicable Part-B ASP price for any of its doses). All three biologic comparators (UST/IFX/ADA)
+now have both dosing and cost fully wired in. Treg's own one-time/two-dose acquisition cost is
+still not wired in.
 
 ## Repository structure
 

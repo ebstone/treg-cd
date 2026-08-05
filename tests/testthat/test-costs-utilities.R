@@ -121,10 +121,11 @@ test_that("load_dosing_schedule and load_drug_prices read the real sourced files
   expect_equal(prices$ust_induction_usd_per_mg, 12.808)
   expect_equal(prices$ust_maintenance_usd_per_mg, 155.883)
   expect_equal(prices$ifx_usd_per_mg, 3.109)
+  expect_equal(prices$ada_usd_per_mg, 84.1678)
   expect_equal(prices$iv_administration_usd, 57.9)
 })
 
-test_that("ADA's sourced dosing schedule is correct (not yet consumed by any cost function)", {
+test_that("ADA's sourced dosing schedule is correct", {
   schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
   ada <- schedule[schedule$therapy == "ADA", ]
 
@@ -178,6 +179,19 @@ test_that("induction_drug_cost matches a hand-computed UST and IFX example at th
   expect_equal(ifx_cost, 3 * (400 * prices$ifx_usd_per_mg + prices$iv_administration_usd))
 })
 
+test_that("induction_drug_cost sums ADA's two UNEQUAL sequential doses, weight-independent, no admin fee", {
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+
+  ada_cost <- induction_drug_cost("ADA", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+  # 160mg + 80mg = 240mg total, at ADA's single NADAC price, no IV administration fee (SC).
+  expect_equal(ada_cost, 240 * prices$ada_usd_per_mg)
+
+  # Weight-independent: a very different weight must give the identical cost (unlike UST/IFX).
+  ada_cost_other_weight <- induction_drug_cost("ADA", 45, schedule, prices)
+  expect_equal(ada_cost, ada_cost_other_weight)
+})
+
 test_that("maintenance_drug_cost_by_cycle charges only on dose cycles (4, 8, 12, ...), UST has no admin fee", {
   states <- MAINTENANCE_STATES
   on_biologic <- matrix(0, nrow = 13, ncol = length(states), dimnames = list(NULL, states))
@@ -194,6 +208,22 @@ test_that("maintenance_drug_cost_by_cycle charges only on dose cycles (4, 8, 12,
   res_ifx <- maintenance_drug_cost_by_cycle(on_biologic, "IFX", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
   expected_per_dose_ifx <- 400 * prices$ifx_usd_per_mg + prices$iv_administration_usd
   expect_equal(res_ifx, ifelse(is_dose_cycle, expected_per_dose_ifx, 0))
+})
+
+test_that("maintenance_drug_cost_by_cycle: ADA charges every SINGLE cycle (EOW), not every 4th like UST/IFX", {
+  states <- MAINTENANCE_STATES
+  on_biologic <- matrix(0, nrow = 9, ncol = length(states), dimnames = list(NULL, states))
+  on_biologic[, "Remission"] <- 1  # everyone on-biologic for all 9 cycles (0..8)
+
+  schedule <- load_dosing_schedule(repo_root_relative("data", "raw"))
+  prices <- load_drug_prices(repo_root_relative("data", "raw"))
+
+  res <- maintenance_drug_cost_by_cycle(on_biologic, "ADA", ASSUMED_PATIENT_WEIGHT_KG, schedule, prices)
+  expected_per_dose <- 40 * prices$ada_usd_per_mg  # SC, no admin fee
+  # first_maintenance_cycle_native_2wk = 2, interval = 1 -> every cycle from 2 onward, not
+  # every 4th (this is the cadence trap the module header explicitly warns about).
+  is_dose_cycle <- (0:8) >= 2
+  expect_equal(res, ifelse(is_dose_cycle, expected_per_dose, 0))
 })
 
 test_that("maintenance_drug_cost_by_cycle stops charging once on_biologic mass has left (cap/switch)", {
@@ -230,7 +260,7 @@ test_that("attach_maintenance_costs_utilities: passing therapy activates drug_co
   # Only need a fake schedule/prices here to keep the test hand-computable and independent of the
   # real sourced files' exact numbers (those are already checked by the loader tests above).
   fake_schedule <- data.frame(
-    therapy = "UST", phase = "Maintenance", dose_amount = 90,
+    therapy = "UST", phase = "Maintenance", dose_amount = 90, route = "SC",
     first_maintenance_cycle_native_2wk = 2, maintenance_interval_cycles_native_2wk = 2,
     stringsAsFactors = FALSE
   )

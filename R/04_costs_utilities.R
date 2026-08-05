@@ -7,11 +7,12 @@
 #
 # FIRST PASS, 2026-08-04. Implements utility attachment and the arm-independent per-cycle
 # health-state monitoring cost in full. UST/IFX drug acquisition + administration costs added
-# 2026-08-04 (second pass) -- see "UST/IFX drug acquisition/administration costs" below. ADA and
-# Treg's own ten Ham-derived dose cost are still not implemented -- see "Not yet implemented"
-# below for why. Non-drug-cost outputs from the first pass ("non_drug_cost_by_cycle" etc.) are
-# kept as separately named fields even now that drug costs exist elsewhere in this module --
-# don't conflate the two.
+# 2026-08-04 (second pass). ADA dosing sourced 2026-08-04 (third pass) and its drug-cost layer
+# wired in the same day (fourth pass) -- see "UST/IFX/ADA drug acquisition/administration costs"
+# below. Treg's own ten Ham-derived dose cost is still not implemented -- see "Not yet
+# implemented" below for why. Non-drug-cost outputs from the first pass
+# ("non_drug_cost_by_cycle" etc.) are kept as separately named fields even now that drug costs
+# exist elsewhere in this module -- don't conflate the two.
 #
 # ---- Why this doesn't read data/processed/model_health_state_costs.csv ------------------------
 #
@@ -42,38 +43,52 @@
 #      directly from Aliyev's own reported 2017 USD per-cycle figures below, not from the
 #      workbook's arm-specific composites.
 #   2. An arm-specific drug-acquisition/administration cost, layered on top only for arms and
-#      cycles where a dose is actually given. Implemented for UST/IFX -- see below; ADA and
-#      Treg's own dose cost are not.
+#      cycles where a dose is actually given. Implemented for UST/IFX/ADA -- see below; Treg's
+#      own dose cost is not (see "Not yet implemented").
 #
-# ---- UST/IFX drug acquisition/administration costs (added 2026-08-04) -------------------------
+# ---- UST/IFX/ADA drug acquisition/administration costs (UST/IFX added 2026-08-04; ADA added ---
+# ---- the same day, in a later pass) -------------------------------------------------------------
 #
 # Sourced from data/raw/biologic_dosing_schedule.csv (dose size, route, and frequency, cited to
-# the STELARA/REMICADE FDA-approved Prescribing Information) and
-# data/raw/cms_asp_and_hcup_cost_sources.csv ($/mg ASP-based payment limits + the flat IV
-# administration fee). Two things this pairing needed that neither file resolves on its own:
+# the STELARA/REMICADE/HUMIRA FDA-approved Prescribing Information) and
+# data/raw/cms_asp_and_hcup_cost_sources.csv ($/mg prices + the flat IV administration fee).
+# UST/IFX prices are CMS ASP-methodology Medicare Part B payment limits; ADA's is NOT -- see
+# point 3 below. Three things this pairing needed that neither file resolves on its own:
 #
 # 1. **Patient weight**, for UST's induction tier lookup and IFX's mg/kg dosing (both weight-
-#    based). Uses ASSUMED_PATIENT_WEIGHT_KG below, Aliyev's own cohort mean (analysis_plan.md
-#    §5: "mean age 35, 71 kg, 50% male") -- not manuscript_supplement1_costs_and_discounting.csv's
-#    70kg worked example, which is just a rounded illustration of that same figure, not an
-#    independent parameter.
+#    based; ADA's dosing is flat/fixed, no weight dependency at all). Uses
+#    ASSUMED_PATIENT_WEIGHT_KG below, Aliyev's own cohort mean (analysis_plan.md §5: "mean age
+#    35, 71 kg, 50% male") -- not manuscript_supplement1_costs_and_discounting.csv's 70kg worked
+#    example, which is just a rounded illustration of that same figure, not an independent
+#    parameter.
 # 2. **Vial rounding for IFX**: 71kg x 5mg/kg = 355mg doesn't divide evenly into IFX's 100mg
 #    vials (data/raw/aliyev2019_appendixS1_table2_parameters.csv). Rounded UP to the nearest whole
 #    vial (400mg), per Aliyev's own Induction Assumption #8 ("No vial sharing... Excess
 #    medication is assumed to be wasted," data/raw/aliyev2019_appendixS1_table1_assumptions.csv)
 #    -- applied to every IFX dosing event (induction AND maintenance), not just induction, since
 #    Remicade vials are single-use/non-preserved and every administration independently wastes
-#    any partial vial. UST's induction doses (260/390/520mg) are already exact vial multiples
-#    (130mg vial) by design -- no rounding needed there. UST's maintenance dose (90mg) is a fixed
-#    pre-filled syringe/pen, not assembled from vials -- also no rounding.
+#    any partial vial. UST's induction doses (260/390/520mg) and ADA's doses (160/80/40mg) are
+#    already exact vial/pen multiples (130mg and 40mg respectively) by design -- no rounding
+#    needed for either.
+# 3. **A current ADA price that isn't a CMS ASP figure.** ADA is entirely self-administered SC --
+#    no dose (including induction) has an applicable Medicare Part-B ASP price, which is why
+#    Aliyev et al. 2019 itself prices ADA via an FSS unit cost rather than ASP. Sourced instead
+#    from CMS Medicaid's NADAC (National Average Drug Acquisition Cost) -- $84.1678/mg, from the
+#    40mg pen (matching the same 40mg unit Aliyev prices ADA against), effective 2026-07-22,
+#    queried directly from the CMS/Medicaid open-data API, cross-validated against the 80mg pen's
+#    independently-computed $/mg rate (within 0.03%) -- data/raw/cms_asp_and_hcup_cost_sources.csv.
 #
 # Cost is split the same way the module header already explains: a one-time INDUCTION cost
 # (induction_drug_cost(), decision-tree-level, not part of any per-cycle trace -- analysis_plan.md
 # §6.1's 8-week induction window) and a recurring MAINTENANCE cost
-# (maintenance_drug_cost_by_cycle(), charged only on cycles a real dose is actually given --
-# every 4th cycle at this project's native 2-week cycle, i.e. every 8 weeks -- and only against
-# mass still on that arm's own biologic track, so patients who've switched to CT or hit the
-# 2-year cap stop being charged automatically, with no separate cap-awareness needed here).
+# (maintenance_drug_cost_by_cycle(), charged only on cycles a real dose is actually given, and
+# only against mass still on that arm's own biologic track, so patients who've switched to CT or
+# hit the 2-year cap stop being charged automatically, with no separate cap-awareness needed
+# here). Dosing cadence read from `schedule`, not hardcoded: UST/IFX maintenance is every 4th
+# native 2-week cycle (q8w); **ADA maintenance is every SINGLE cycle (EOW, interval=1) -- a
+# materially different cadence, not a typo.** ADA's induction is two unequal sequential doses
+# (160mg then 80mg), summed from two separate schedule rows rather than one row x n_doses like
+# IFX's three identical doses.
 #
 # **Not applied to Treg's non-cured track.** attach_treg_costs_utilities() reuses UST's own
 # maintenance matrix for Treg's non-cured patients (efficacy-equivalent to UST, analysis_plan.md
@@ -87,19 +102,6 @@
 # passes one for its Markov portion.
 #
 # ---- Not yet implemented ------------------------------------------------------------------
-#
-# ADA's dosing schedule (160mg wk0 + 80mg wk2 induction, 40mg SC every-other-week maintenance --
-# note: EOW is a materially different cadence from UST/IFX's every-8-weeks, every native 2-week
-# cycle rather than every 4th) is now SOURCED in data/raw/biologic_dosing_schedule.csv (added
-# 2026-08-04, same provenance standard as UST/IFX: HUMIRA Prescribing Information via
-# humirapro.com, cross-checked against medicalnewstoday.com, and against Aliyev's own 40mg
-# syringe unit cost already in this repo). ADA's drug-COST layer is NOT wired into this module
-# yet, though -- unlike UST/IFX, ADA is entirely self-administered SC (no Part-B-style ASP price
-# applies to any of its doses, including induction; Aliyev's own paper prices it via an FSS unit
-# cost instead, data/raw/aliyev2019_appendixS1_table2_parameters.csv). A current $/mg price for
-# ADA (NADAC or WAC benchmark, not CMS ASP) still needs sourcing before induction_drug_cost()/
-# maintenance_drug_cost_by_cycle() can be extended to it -- flagged here rather than reusing the
-# stale 2017 FSS figure or guessing at a current price.
 #
 # Treg's own acquisition cost (ten Ham-derived, data/processed/model_dose_costs_and_psa_ranges.csv)
 # is a decision-tree-level one-time/two-dose event, not a recurring per-cycle charge (R/00's
@@ -148,7 +150,7 @@ health_state_monitoring_costs <- function() {
 CT_DRUG_COST_2017_USD <- 67
 ct_drug_cost <- function() CT_DRUG_COST_2017_USD * INFLATION_2017_TO_2025
 
-# ---- UST/IFX drug acquisition + administration cost (data/raw/biologic_dosing_schedule.csv) ----
+# ---- UST/IFX/ADA drug acquisition + administration cost (data/raw/biologic_dosing_schedule.csv) --
 
 #' Assumed patient body weight for weight-based dosing (UST induction tier selection, IFX mg/kg
 #' conversion). Aliyev's own cohort mean (analysis_plan.md §5: "mean age 35, 71 kg, 50% male"),
@@ -161,16 +163,16 @@ ASSUMED_PATIENT_WEIGHT_KG <- 71
 IFX_VIAL_SIZE_MG <- 100
 
 #' UST/IFX/ADA dosing schedule (data/raw/biologic_dosing_schedule.csv, sourced 2026-08-04:
-#' STELARA/REMICADE/HUMIRA Prescribing Information). ADA rows are present but not yet consumed by
-#' any cost function in this module -- see "Not yet implemented" in the module header (no current
-#' ADA drug price sourced yet).
+#' STELARA/REMICADE/HUMIRA Prescribing Information).
 load_dosing_schedule <- function(raw_dir = "data/raw") {
   utils::read.csv(file.path(raw_dir, "biologic_dosing_schedule.csv"), stringsAsFactors = FALSE)
 }
 
 #' $/mg (or $/mg-equivalent) drug prices and the flat IV administration fee
 #' (data/raw/cms_asp_and_hcup_cost_sources.csv), keyed by HCPCS code so a code typo fails loudly
-#' rather than silently returning NA.
+#' rather than silently returning NA. UST/IFX prices are CMS ASP-methodology Part B payment
+#' limits; ada_usd_per_mg is a NADAC price instead (module header, point 3) -- same list,
+#' different methodology per drug, not an inconsistency to resolve here.
 load_drug_prices <- function(raw_dir = "data/raw") {
   df <- utils::read.csv(file.path(raw_dir, "cms_asp_and_hcup_cost_sources.csv"), stringsAsFactors = FALSE)
   price_for <- function(code) {
@@ -182,7 +184,20 @@ load_drug_prices <- function(raw_dir = "data/raw") {
     ust_induction_usd_per_mg = price_for("J3358"),
     ust_maintenance_usd_per_mg = price_for("J3357"),
     ifx_usd_per_mg = price_for("J1745"),
+    ada_usd_per_mg = price_for("J0135"),
     iv_administration_usd = price_for("96365")
+  )
+}
+
+#' $/mg price for one therapy, from the `prices` list load_drug_prices() returns. UST has two
+#' different prices (induction vs. maintenance -- different HCPCS codes/formulations); IFX and
+#' ADA each have one price covering both phases.
+drug_price_per_mg <- function(therapy, phase, prices) {
+  switch(therapy,
+    UST = if (phase == "Induction") prices$ust_induction_usd_per_mg else prices$ust_maintenance_usd_per_mg,
+    IFX = prices$ifx_usd_per_mg,
+    ADA = prices$ada_usd_per_mg,
+    stop("Unknown therapy: ", therapy)
   )
 }
 
@@ -209,37 +224,58 @@ ifx_dose_mg <- function(weight_kg, schedule, vial_size_mg = IFX_VIAL_SIZE_MG) {
   ceiling(raw_mg / vial_size_mg) * vial_size_mg
 }
 
+#' Dose size in mg for one schedule row, resolving IFX's weight-based mg/kg dosing to an actual
+#' vial-rounded mg amount; every other therapy's dose_amount is already a flat/fixed mg figure
+#' (UST's induction tiers, UST's 90mg maintenance, ADA's 160/80/40mg doses), read as-is.
+dose_mg_for_row <- function(row, weight_kg, schedule) {
+  if (row$therapy == "IFX") ifx_dose_mg(weight_kg, schedule) else row$dose_amount
+}
+
 #' One-time induction-phase drug cost (analysis_plan.md §6.1's 8-week decision-tree induction) --
 #' NOT part of any per-cycle Markov trace; the caller (eventually R/05_deterministic_results.R)
-#' adds this once per patient/arm on top of the per-cycle results below. UST is a single IV dose;
-#' IFX is n_doses (3, at weeks 0/2/6, all within the induction window) independently vial-rounded
-#' IV doses, each with its own administration fee.
+#' adds this once per patient/arm on top of the per-cycle results below.
+#'
+#' UST's induction is a single weight-tiered dose -- one row selected by
+#' ust_induction_dose_mg()'s tier lookup, not summed with the schedule's other UST induction rows
+#' (those are alternative weight tiers, not sequential doses). IFX and ADA sum EVERY induction row
+#' for that therapy: IFX has one row with n_doses=3 (three identical vial-rounded doses at weeks
+#' 0/2/6); ADA has two rows with n_doses=1 each (160mg then 80mg, unequal sequential doses -- see
+#' module header on why these are separate rows rather than one row x n_doses like IFX). Each
+#' dose's administration fee is added only if that row's route is IV (UST induction, IFX); ADA is
+#' always SC, so no administration fee at any point.
 induction_drug_cost <- function(therapy, weight_kg, schedule, prices) {
-  therapy <- match.arg(therapy, c("UST", "IFX"))
+  therapy <- match.arg(therapy, c("UST", "IFX", "ADA"))
+
   if (therapy == "UST") {
     dose_mg <- ust_induction_dose_mg(weight_kg, schedule)
-    dose_mg * prices$ust_induction_usd_per_mg + prices$iv_administration_usd
-  } else {
-    row <- schedule[schedule$therapy == "IFX" & schedule$phase == "Induction", ]
-    stopifnot(nrow(row) == 1)
-    dose_mg <- ifx_dose_mg(weight_kg, schedule)
-    row$n_doses * (dose_mg * prices$ifx_usd_per_mg + prices$iv_administration_usd)
+    return(dose_mg * drug_price_per_mg("UST", "Induction", prices) + prices$iv_administration_usd)
   }
+
+  rows <- schedule[schedule$therapy == therapy & schedule$phase == "Induction", ]
+  stopifnot(nrow(rows) >= 1)
+  price_per_mg <- drug_price_per_mg(therapy, "Induction", prices)
+  total <- 0
+  for (i in seq_len(nrow(rows))) {
+    row <- rows[i, ]
+    admin_fee <- if (row$route == "IV") prices$iv_administration_usd else 0
+    total <- total + row$n_doses * (dose_mg_for_row(row, weight_kg, schedule) * price_per_mg + admin_fee)
+  }
+  total
 }
 
 #' Per-cycle maintenance drug cost, added on top of on_biologic occupancy at the real dosing
-#' cadence read from `schedule` (every 4th cycle at this project's native 2-week cycle = every 8
-#' weeks, first dose at maintenance-phase cycle 4 -- data/raw/biologic_dosing_schedule.csv), for as
-#' long as a patient remains on that arm's own biologic track. `on_biologic_trace` mass naturally
-#' goes to 0 for patients who've switched to CT or hit the 2-year cap (R/02_markov_engine.R), so
-#' this needs no separate cap-awareness.
+#' cadence read from `schedule` (data/raw/biologic_dosing_schedule.csv) -- every 4th native
+#' 2-week cycle for UST/IFX (q8w), every SINGLE cycle for ADA (EOW -- a materially different
+#' cadence, not a typo, see module header) -- for as long as a patient remains on that arm's own
+#' biologic track. `on_biologic_trace` mass naturally goes to 0 for patients who've switched to
+#' CT or hit the 2-year cap (R/02_markov_engine.R), so this needs no separate cap-awareness.
 #'
-#' UST maintenance is SC (self-injection): drug cost only, no IV administration fee -- Aliyev's
-#' own Costs Assumption #3 (data/raw/aliyev2019_appendixS1_table1_assumptions.csv) covers SC
-#' patients' visit costs via the monitoring/management cost, not a separate procedure fee. IFX
-#' maintenance is IV: drug cost + administration fee every dose, same as induction.
+#' UST and ADA maintenance are SC (self-injection): drug cost only, no IV administration fee --
+#' Aliyev's own Costs Assumption #3 (data/raw/aliyev2019_appendixS1_table1_assumptions.csv)
+#' covers SC patients' visit costs via the monitoring/management cost, not a separate procedure
+#' fee. IFX maintenance is IV: drug cost + administration fee every dose, same as induction.
 maintenance_drug_cost_by_cycle <- function(on_biologic_trace, therapy, weight_kg, schedule, prices) {
-  therapy <- match.arg(therapy, c("UST", "IFX"))
+  therapy <- match.arg(therapy, c("UST", "IFX", "ADA"))
   row <- schedule[schedule$therapy == therapy & schedule$phase == "Maintenance", ]
   stopifnot(nrow(row) == 1)
 
@@ -252,11 +288,8 @@ maintenance_drug_cost_by_cycle <- function(on_biologic_trace, therapy, weight_kg
                       by = row$maintenance_interval_cycles_native_2wk)
   is_dose_cycle[dose_cycles + 1] <- TRUE  # +1: trace row 1 is cycle 0
 
-  if (therapy == "UST") {
-    per_dose_cost <- row$dose_amount * prices$ust_maintenance_usd_per_mg  # SC, no admin fee
-  } else {
-    per_dose_cost <- ifx_dose_mg(weight_kg, schedule) * prices$ifx_usd_per_mg + prices$iv_administration_usd
-  }
+  admin_fee <- if (row$route == "IV") prices$iv_administration_usd else 0
+  per_dose_cost <- dose_mg_for_row(row, weight_kg, schedule) * drug_price_per_mg(therapy, "Maintenance", prices) + admin_fee
 
   mass_on_biologic * is_dose_cycle * per_dose_cost
 }
@@ -329,8 +362,8 @@ trace_costs <- function(trace, monitoring_costs, cycle_weeks = 2, annual_rate = 
 #' on_biologic + on_ct (equivalent to `total` for a plain maintenance arm) since utility depends
 #' only on health state, not which track a patient is on.
 #'
-#' `therapy` activates the UST/IFX drug-cost layer (module header) -- pass "UST" or "IFX" plus
-#' `weight_kg`/`schedule`/`prices` to charge on_biologic's own maintenance drug cost;
+#' `therapy` activates the UST/IFX/ADA drug-cost layer (module header) -- pass "UST", "IFX", or
+#' "ADA" plus `weight_kg`/`schedule`/`prices` to charge on_biologic's own maintenance drug cost;
 #' `drug_cost_by_cycle` stays all-zero if `therapy` is NULL (the default), which is deliberate for
 #' CT-only arms (CT's drug cost is already the separate ct_drug_cost() layer on on_ct, not this
 #' one) and for Treg's non-cured track (see attach_treg_costs_utilities() -- never passes
