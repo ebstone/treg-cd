@@ -3,6 +3,7 @@
 # Same loading pattern as test-psa.R / test-evpi-evppi.R.
 repo_root_relative <- function(...) file.path("..", "..", ...)
 source(repo_root_relative("R", "utils", "transition_matrix.R"), local = TRUE)
+source(repo_root_relative("R", "utils", "life_table.R"), local = TRUE)
 source(repo_root_relative("R", "00_derive_transition_probs.R"), local = TRUE)
 source(repo_root_relative("R", "01_decision_tree.R"), local = TRUE)
 source(repo_root_relative("R", "02_markov_engine.R"), local = TRUE)
@@ -34,6 +35,21 @@ test_that("ejp_deterministic's p_star round-trips through R/05's independently-i
   for (pi in c(0, 0.3, 0.6, 1)) {
     res <- ejp_deterministic(pi, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
     rt <- headroom_pi_star(res$p_star, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+    expect_true(rt$feasible)
+    expect_equal(rt$pi_star, pi, tolerance = 1e-3)
+  }
+})
+
+test_that("the same round-trip holds at the lifetime horizon (baseline_age threaded through both sides)", {
+  # Same cross-check as above, but exercising the lifetime-horizon plumbing added 2026-08-05
+  # (baseline_age/life_table now accepted by both ejp_deterministic()/ejp_frontier() here and
+  # headroom_pi_star()/headroom_frontier() in R/05) -- a mismatch would mean one side is
+  # threading baseline_age through and the other isn't.
+  for (pi in c(0, 0.5, 1)) {
+    res <- ejp_deterministic(pi, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_LIFETIME,
+                              baseline_age = ASSUMED_PATIENT_AGE_YEARS, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+    rt <- headroom_pi_star(res$p_star, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_LIFETIME,
+                            baseline_age = ASSUMED_PATIENT_AGE_YEARS, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
     expect_true(rt$feasible)
     expect_equal(rt$pi_star, pi, tolerance = 1e-3)
   }

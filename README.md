@@ -184,6 +184,34 @@ revised** — QALYs fall, ICERs and the required cure fraction π\* rise, and th
 substantially on both changes; re-run `analysis/run_base_case.R` and friends before citing any
 number from before 2026-08-05. Full test suite: 324 assertions, 0 failures.
 
+**Lifetime horizon implemented (2026-08-05)**, closing the gap `R/05_deterministic_results.R`'s
+own module header had flagged ("no life-table data sourced anywhere in this repository").
+`data/raw/nchs_us_life_tables_2021.csv` (NCHS "United States Life Tables, 2021", age- and
+sex-specific `qx` by single year of age 0–100) plus new `R/utils/life_table.R`
+(`load_life_table()`, `death_prob_schedule()`) and `R/utils/transition_matrix.R`'s new
+`age_adjust_matrix()` REPLACE (not add to) Aliyev's own flat, non-age-varying embedded trial
+mortality with the life-table figure for the cohort's current attained age — the "no CD excess
+mortality" assumption analysis_plan.md §7.1 item 7 already specified, now actually wired in.
+Male/female sub-cohorts (50/50) run separately against their own curve and sum exactly (linearity,
+not an approximation) — `R/02_markov_engine.R`'s `run_maintenance_arm_with_mortality()` and
+`R/03_cure_fraction_module.R`'s `run_treg_arm_with_mortality()`. **Real bug found and fixed along
+the way:** the Sustained Deep Remission (cured) pool had no death exit at all before this —
+harmless at a 6-year horizon, silently wrong (immortal cured patients) at a lifetime one; SDR now
+has a competing-risks death/relapse split each cycle. `R/05_deterministic_results.R`'s
+`HORIZON_CYCLES_LIFETIME` runs the cohort from baseline age 35 (Aliyev's own cohort mean) to the
+life table's terminal age 100; `run_base_case()`, `headroom_pi_star()`, `headroom_frontier()` and
+`R/08_ejp.R`'s EJP functions all gained an opt-in `baseline_age`/`life_table` pair (`NULL` default
+reproduces the exact pre-existing 6.15-year/10-year behaviour, byte-identical, fully backward
+compatible). This resolves the structural-infeasibility problem the 6.15-year horizon had — no
+cure fraction at any plausible price made Treg cost-effective at that horizon; at the lifetime
+horizon the required cure fraction π\* at Treg's sourced acquisition price ($19,916.75) is
+feasible at all three WTP thresholds (see `output/tables/headroom_at_sourced_price_lifetime.csv`
+and analysis_plan.md §4.3 for the exact figures). PSA/EVPI/EVPPI/probabilistic EJP still run at
+the 6.15-year horizon this pass — extending `age_adjust_matrix()` to a ~40,000-call PSA is an
+unbenchmarked performance question, deliberately deferred. `analysis/run_full_analysis.R`'s
+"6/6: Lifetime horizon" section now runs this end to end. Full test suite: 385 assertions,
+0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,

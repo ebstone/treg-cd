@@ -126,17 +126,25 @@ gross_margin_over_cogs <- function(p_star, proc_dir = "data/processed") {
 #'
 #' Returns the solved price plus every quantity the algebra used, so a caller can verify
 #' INMB(p_star) == 0 directly rather than trusting the arithmetic blindly.
+#'
+#' `baseline_age`/`life_table = NULL` (default): same meaning as
+#' R/05_deterministic_results.R's headroom_pi_star()'s equivalent parameters, threaded through
+#' to both the comparator summaries and the Treg run -- preserves the round-trip cross-check
+#' against headroom_pi_star() (test-ejp.R) at the lifetime horizon too, not just the two
+#' pre-lifetime-horizon comparability scenarios.
 ejp_deterministic <- function(pi_sdr, wtp_usd, relapse_hazard_annual = 0, n_cycles = HORIZON_CYCLES_6YR,
                                matrices = NULL, comparator_summaries = NULL,
                                weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
-                               raw_dir = "data/raw", proc_dir = "data/processed") {
+                               raw_dir = "data/raw", proc_dir = "data/processed",
+                               baseline_age = NULL, life_table = NULL) {
   if (is.null(matrices)) matrices <- build_all_transition_matrices(raw_dir)
   if (is.null(comparator_summaries)) {
     comparator_summaries <- stats::setNames(
       lapply(COMPARATOR_THERAPIES, function(tx) {
         run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
-                                     apply_cap, cap_cycle, raw_dir, proc_dir)
+                                     apply_cap, cap_cycle, raw_dir, proc_dir,
+                                     baseline_age = baseline_age, life_table = life_table)
       }),
       COMPARATOR_THERAPIES
     )
@@ -146,7 +154,8 @@ ejp_deterministic <- function(pi_sdr, wtp_usd, relapse_hazard_annual = 0, n_cycl
   # total_cost comes back here IS C_treg,non-drug, with no need to back it out algebraically.
   treg <- run_treg_arm_lifetime(n_cycles, pi_sdr, relapse_hazard_annual, price_usd = 0, matrices,
                                  weight_kg, cycle_weeks, annual_rate, cap_cycle = cap_cycle,
-                                 apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir)
+                                 apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
+                                 baseline_age = baseline_age, life_table = life_table)
 
   best <- best_comparator_nmb(comparator_summaries, wtp_usd)
   comp <- comparator_summaries[[best$comparator]]
@@ -171,15 +180,18 @@ ejp_deterministic <- function(pi_sdr, wtp_usd, relapse_hazard_annual = 0, n_cycl
 #' R/05_deterministic_results.R's headroom_frontier() traces from the price side (module header).
 #' Builds matrices/comparator summaries ONCE for the whole grid, same pattern as
 #' headroom_frontier() itself.
+#' `baseline_age`/`life_table = NULL` (default): same meaning as ejp_deterministic()'s
+#' equivalent parameters, threaded through unchanged.
 ejp_frontier <- function(pi_grid, wtp_usd, relapse_hazard_annual = 0, n_cycles = HORIZON_CYCLES_6YR,
                           weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2, annual_rate = 0.03,
                           apply_cap = TRUE, cap_cycle = 52, raw_dir = "data/raw",
-                          proc_dir = "data/processed") {
+                          proc_dir = "data/processed", baseline_age = NULL, life_table = NULL) {
   matrices <- build_all_transition_matrices(raw_dir)
   comparator_summaries <- stats::setNames(
     lapply(COMPARATOR_THERAPIES, function(tx) {
       run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
-                                   apply_cap, cap_cycle, raw_dir, proc_dir)
+                                   apply_cap, cap_cycle, raw_dir, proc_dir,
+                                   baseline_age = baseline_age, life_table = life_table)
     }),
     COMPARATOR_THERAPIES
   )
@@ -187,7 +199,7 @@ ejp_frontier <- function(pi_grid, wtp_usd, relapse_hazard_annual = 0, n_cycles =
   rows <- lapply(pi_grid, function(pi_sdr) {
     res <- ejp_deterministic(pi_sdr, wtp_usd, relapse_hazard_annual, n_cycles, matrices,
                               comparator_summaries, weight_kg, cycle_weeks, annual_rate, apply_cap,
-                              cap_cycle, raw_dir, proc_dir)
+                              cap_cycle, raw_dir, proc_dir, baseline_age, life_table)
     data.frame(pi_sdr = pi_sdr, wtp_usd = wtp_usd, p_star = res$p_star, comparator = res$comparator)
   })
   do.call(rbind, rows)

@@ -14,6 +14,7 @@
 # which consume this trace; keeping them out of here is what keeps this file auditable.
 
 if (!exists("validate_row_sums")) source("R/utils/transition_matrix.R")
+if (!exists("death_prob_schedule")) source("R/utils/life_table.R")
 
 MAINTENANCE_STATES <- c("Moderate-Severe", "Moderate-Severe Responder", "Mild",
                          "Remission", "Surgery", "Death")
@@ -85,12 +86,23 @@ step_maintenance_cycle <- function(on_biologic_prev, on_ct_prev, biologic_matrix
 #' state; a real induction split (R/01_decision_tree.R) has non-responders entering directly on
 #' CT at cycle 0, not accumulating there only through the cycle-by-cycle Moderate-Severe switch
 #' -- pass that split's `initial_on_ct` here to represent that correctly.
+#'
+#' `death_prob_schedule = NULL` (default): both matrices are used fixed, every cycle, exactly as
+#' before this parameter existed -- fully backward compatible, every pre-lifetime-horizon caller
+#' and test is unaffected. Pass a length-`n_cycles` vector (R/utils/life_table.R's
+#' death_prob_schedule()) to instead re-derive both matrices EVERY cycle via age_adjust_matrix()
+#' (R/utils/transition_matrix.R) at that cycle's background-mortality probability -- the
+#' lifetime-horizon path (R/05_deterministic_results.R's HORIZON_CYCLES_LIFETIME). Not called
+#' directly for that path in practice -- run_maintenance_arm_with_mortality() below is the
+#' entry point that actually builds the schedule (per sex) and calls this.
 run_maintenance_arm <- function(biologic_matrix, ct_matrix, initial_state, n_cycles,
-                                 cap_cycle = 52, apply_cap = TRUE, initial_on_ct = NULL) {
+                                 cap_cycle = 52, apply_cap = TRUE, initial_on_ct = NULL,
+                                 death_prob_schedule = NULL) {
   states <- rownames(biologic_matrix)
   stopifnot(
     !is.null(states), identical(states, rownames(ct_matrix)),
-    length(initial_state) == length(states), n_cycles >= 0, cap_cycle > 0
+    length(initial_state) == length(states), n_cycles >= 0, cap_cycle > 0,
+    is.null(death_prob_schedule) || length(death_prob_schedule) == n_cycles
   )
   ms_idx <- match("Moderate-Severe", states)
   stopifnot(!is.na(ms_idx))
@@ -103,8 +115,15 @@ run_maintenance_arm <- function(biologic_matrix, ct_matrix, initial_state, n_cyc
   on_ct[1, ] <- initial_on_ct
 
   for (t in seq_len(n_cycles)) {
+    if (is.null(death_prob_schedule)) {
+      bio_m <- biologic_matrix
+      ct_m <- ct_matrix
+    } else {
+      bio_m <- age_adjust_matrix(biologic_matrix, death_prob_schedule[t])
+      ct_m <- age_adjust_matrix(ct_matrix, death_prob_schedule[t])
+    }
     step <- step_maintenance_cycle(
-      on_biologic[t, ], on_ct[t, ], biologic_matrix, ct_matrix, ms_idx,
+      on_biologic[t, ], on_ct[t, ], bio_m, ct_m, ms_idx,
       apply_cap_now = apply_cap && t == cap_cycle
     )
     on_biologic[t + 1, ] <- step$on_biologic
@@ -112,6 +131,38 @@ run_maintenance_arm <- function(biologic_matrix, ct_matrix, initial_state, n_cyc
   }
 
   list(on_biologic = on_biologic, on_ct = on_ct, total = on_biologic + on_ct)
+}
+
+# ---- Lifetime horizon: age- and sex-specific background mortality (R/utils/life_table.R) ----
+
+#' Run run_maintenance_arm() twice, once per sex, at half the cohort's initial mass each (this
+#' study's own 50% male / 50% female population, analysis_plan.md §5), each against that sex's
+#' own death_prob_schedule(), and sum the two occupancy traces. This is the only place sex
+#' enters the model -- see R/utils/life_table.R's module header for why summing two sub-cohorts
+#' is exact here, not an approximation, and why background mortality REPLACES rather than adds
+#' to Aliyev's own trial-cohort mortality figure.
+run_maintenance_arm_with_mortality <- function(biologic_matrix, ct_matrix, initial_state, n_cycles,
+                                                baseline_age, cap_cycle = 52, apply_cap = TRUE,
+                                                initial_on_ct = NULL, life_table = NULL,
+                                                raw_dir = "data/raw", cycle_weeks = 2) {
+  states <- rownames(biologic_matrix)
+  if (is.null(initial_on_ct)) initial_on_ct <- rep(0, length(states))
+  if (is.null(life_table)) life_table <- load_life_table(raw_dir)
+
+  runs <- lapply(c("male", "female"), function(sex) {
+    schedule <- death_prob_schedule(baseline_age, sex, n_cycles, cycle_weeks, life_table)
+    run_maintenance_arm(
+      biologic_matrix, ct_matrix, initial_state * 0.5, n_cycles,
+      cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = initial_on_ct * 0.5,
+      death_prob_schedule = schedule
+    )
+  })
+
+  list(
+    on_biologic = runs[[1]]$on_biologic + runs[[2]]$on_biologic,
+    on_ct = runs[[1]]$on_ct + runs[[2]]$on_ct,
+    total = runs[[1]]$total + runs[[2]]$total
+  )
 }
 
 # ---- Discounting helper -------------------------------------------------------

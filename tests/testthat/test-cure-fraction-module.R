@@ -4,10 +4,13 @@
 # `if (!exists(...))` guard skips its internal (otherwise-broken-from-here) source() call.
 repo_root_relative <- function(...) file.path("..", "..", ...)
 source(repo_root_relative("R", "utils", "transition_matrix.R"), local = TRUE)
+source(repo_root_relative("R", "utils", "life_table.R"), local = TRUE)
 source(repo_root_relative("R", "00_derive_transition_probs.R"), local = TRUE)
 source(repo_root_relative("R", "01_decision_tree.R"), local = TRUE)
 source(repo_root_relative("R", "02_markov_engine.R"), local = TRUE)
 source(repo_root_relative("R", "03_cure_fraction_module.R"), local = TRUE)
+
+RAW_DIR <- repo_root_relative("data", "raw")
 
 test_that("hazard_to_cycle_probability matches a closed-form check", {
   expect_equal(hazard_to_cycle_probability(0), 0)
@@ -121,4 +124,92 @@ test_that("end-to-end: real UST/CT matrices over a full lifetime horizon conserv
     post_landmark_sdr <- res$on_sdr[29:1301]
     expect_true(all(diff(post_landmark_sdr) <= 1e-12), info = paste("pi_sdr =", pi_sdr))
   }
+})
+
+# ---- Lifetime horizon: age- and sex-specific background mortality (2026-08-05) ----------------
+
+test_that("run_treg_arm's death_prob_schedule defaults to NULL and is fully backward compatible", {
+  maintenance <- load_published_maintenance(RAW_DIR)
+  ust_m <- build_transition_matrix(maintenance[maintenance$therapy == "UST", ], MAINTENANCE_STATES)
+  ct_m <- build_transition_matrix(maintenance[maintenance$therapy == "CT", ], MAINTENANCE_STATES)
+  induction <- load_published_induction(RAW_DIR)
+  split <- run_decision_tree(induction[induction$therapy == "UST", ])
+
+  without_arg <- run_treg_arm(ust_m, ct_m, split$initial_on_biologic, split$initial_on_ct,
+                               n_cycles = 100, pi_sdr = 0.5, relapse_hazard_annual = 0.05)
+  with_explicit_null <- run_treg_arm(ust_m, ct_m, split$initial_on_biologic, split$initial_on_ct,
+                                      n_cycles = 100, pi_sdr = 0.5, relapse_hazard_annual = 0.05,
+                                      death_prob_schedule = NULL)
+  expect_equal(without_arg, with_explicit_null)
+})
+
+test_that("with a death_prob_schedule, the SDR pool loses mass to death (a real gap before this change: SDR had no death exit at all)", {
+  states <- MAINTENANCE_STATES
+  bio_m <- build_transition_matrix(data.frame(from_state = "Remission", to_state = "Remission", probability = 1), states)
+  ct_m <- build_transition_matrix(data.frame(from_state = "Remission", to_state = "Remission", probability = 1), states)
+  init_bio <- stats::setNames(rep(0, length(states)), states); init_bio["Remission"] <- 1
+  init_ct <- stats::setNames(rep(0, length(states)), states)
+
+  lt <- load_life_table(RAW_DIR)
+  n_cycles <- 60
+  schedule <- death_prob_schedule(80, "male", n_cycles = n_cycles, life_table = lt)  # old -> high mortality
+
+  # relapse_hazard_annual = 0: with the OLD (no-mortality) behaviour, on_sdr would never decay at
+  # all once everyone's landed in SDR. With a death schedule, it must decay purely from mortality.
+  res <- run_treg_arm(bio_m, ct_m, init_bio, init_ct, n_cycles = n_cycles, pi_sdr = 1,
+                       relapse_hazard_annual = 0, landmark_cycle = 1, cap_cycle = 52,
+                       death_prob_schedule = schedule)
+
+  # landmark_cycle = 1 means phase 1 is itself one age-adjusted cycle, so the Remission mass
+  # entering SDR at the landmark is already net of that cycle's own mortality (1 - schedule[1]),
+  # not the full 1 -- a real consequence of mortality applying everywhere, not a test artifact.
+  expect_equal(res$on_sdr[2], 1 - schedule[1], tolerance = 1e-12)
+  expect_true(res$on_sdr[n_cycles + 1] < res$on_sdr[2])  # decayed further
+  expect_true(all(diff(res$on_sdr[2:(n_cycles + 1)]) <= 1e-12))  # monotonically, from death alone
+
+  # Without a schedule, on_sdr never decays when relapse_hazard_annual = 0 -- confirms the decay
+  # above is really coming from the mortality path, not something else.
+  no_mortality <- run_treg_arm(bio_m, ct_m, init_bio, init_ct, n_cycles = n_cycles, pi_sdr = 1,
+                                relapse_hazard_annual = 0, landmark_cycle = 1, cap_cycle = 52)
+  expect_equal(no_mortality$on_sdr[n_cycles + 1], 1)
+})
+
+test_that("run_treg_arm rejects a death_prob_schedule of the wrong length", {
+  states <- MAINTENANCE_STATES
+  bio_m <- build_transition_matrix(data.frame(from_state = "Remission", to_state = "Remission", probability = 1), states)
+  ct_m <- build_transition_matrix(data.frame(from_state = "Remission", to_state = "Remission", probability = 1), states)
+  init_bio <- stats::setNames(rep(0, length(states)), states); init_bio["Remission"] <- 1
+  init_ct <- stats::setNames(rep(0, length(states)), states)
+  expect_error(run_treg_arm(bio_m, ct_m, init_bio, init_ct, n_cycles = 10, pi_sdr = 0.5,
+                             relapse_hazard_annual = 0, death_prob_schedule = c(0.01, 0.02)))
+})
+
+test_that("run_treg_arm_with_mortality splits 50/50 by sex, conserves mass, and its Death share is the exact 50/50 average of single-sex runs", {
+  maintenance <- load_published_maintenance(RAW_DIR)
+  ust_m <- build_transition_matrix(maintenance[maintenance$therapy == "UST", ], MAINTENANCE_STATES)
+  ct_m <- build_transition_matrix(maintenance[maintenance$therapy == "CT", ], MAINTENANCE_STATES)
+  induction <- load_published_induction(RAW_DIR)
+  split <- run_decision_tree(induction[induction$therapy == "UST", ])
+  lt <- load_life_table(RAW_DIR)
+  n_cycles <- 80
+
+  combined <- run_treg_arm_with_mortality(
+    ust_m, ct_m, split$initial_on_biologic, split$initial_on_ct, n_cycles = n_cycles,
+    pi_sdr = 0.4, relapse_hazard_annual = 0.05, baseline_age = 70, life_table = lt
+  )
+  expect_equal(combined$total, rep(1, n_cycles + 1), tolerance = 1e-9)
+
+  male_schedule <- death_prob_schedule(70, "male", n_cycles = n_cycles, life_table = lt)
+  female_schedule <- death_prob_schedule(70, "female", n_cycles = n_cycles, life_table = lt)
+  male_only <- run_treg_arm(ust_m, ct_m, split$initial_on_biologic, split$initial_on_ct,
+                             n_cycles = n_cycles, pi_sdr = 0.4, relapse_hazard_annual = 0.05,
+                             death_prob_schedule = male_schedule)
+  female_only <- run_treg_arm(ust_m, ct_m, split$initial_on_biologic, split$initial_on_ct,
+                               n_cycles = n_cycles, pi_sdr = 0.4, relapse_hazard_annual = 0.05,
+                               death_prob_schedule = female_schedule)
+
+  combined_death <- combined$on_biologic[n_cycles + 1, "Death"] + combined$on_ct[n_cycles + 1, "Death"]
+  male_death <- male_only$on_biologic[n_cycles + 1, "Death"] + male_only$on_ct[n_cycles + 1, "Death"]
+  female_death <- female_only$on_biologic[n_cycles + 1, "Death"] + female_only$on_ct[n_cycles + 1, "Death"]
+  expect_equal(combined_death, 0.5 * male_death + 0.5 * female_death, tolerance = 1e-9)
 })

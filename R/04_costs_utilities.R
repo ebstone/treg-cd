@@ -262,6 +262,13 @@ ct_drug_cost <- function() CT_DRUG_COST_2017_USD * INFLATION_2017_TO_2025
 #' which is a rounded illustration of the same underlying population, not an independent source.
 ASSUMED_PATIENT_WEIGHT_KG <- 71
 
+#' Assumed patient starting age, same source and cohort as ASSUMED_PATIENT_WEIGHT_KG above
+#' (analysis_plan.md §5: "mean age 35"). Used by the lifetime-horizon path
+#' (R/05_deterministic_results.R's HORIZON_CYCLES_LIFETIME, R/utils/life_table.R's
+#' death_prob_schedule()) as the cohort's cycle-0 attained age -- the point background mortality
+#' starts accruing from.
+ASSUMED_PATIENT_AGE_YEARS <- 35
+
 #' IFX vial size (data/raw/aliyev2019_appendixS1_table2_parameters.csv: "FSS IFX Unit Cost (100
 #' mg Vial)"). Used for vial-rounding -- see module header.
 IFX_VIAL_SIZE_MG <- 100

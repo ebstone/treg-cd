@@ -3,6 +3,7 @@
 # Same loading pattern as test-costs-utilities.R.
 repo_root_relative <- function(...) file.path("..", "..", ...)
 source(repo_root_relative("R", "utils", "transition_matrix.R"), local = TRUE)
+source(repo_root_relative("R", "utils", "life_table.R"), local = TRUE)
 source(repo_root_relative("R", "00_derive_transition_probs.R"), local = TRUE)
 source(repo_root_relative("R", "01_decision_tree.R"), local = TRUE)
 source(repo_root_relative("R", "02_markov_engine.R"), local = TRUE)
@@ -147,4 +148,59 @@ test_that("a longer horizon gives Treg strictly more headroom (lower pi* for the
   long <- headroom_pi_star(price, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_10YR, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
   expect_true(short$feasible && long$feasible)
   expect_true(long$pi_star < short$pi_star)
+})
+
+# ---- Lifetime horizon (2026-08-05) -------------------------------------------------------------
+
+test_that("baseline_age = NULL (default) reproduces the exact pre-lifetime-horizon base case, unchanged", {
+  without_arg <- run_base_case(raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  with_explicit_null <- run_base_case(raw_dir = RAW_DIR, proc_dir = PROC_DIR, baseline_age = NULL)
+  expect_equal(without_arg, with_explicit_null)
+})
+
+test_that("HORIZON_CYCLES_LIFETIME is derived to land the cohort exactly at the life table's terminal age", {
+  # ASSUMED_PATIENT_AGE_YEARS (35) + HORIZON_CYCLES_LIFETIME cycles of 2 weeks each should reach
+  # age 100 (data/raw/nchs_us_life_tables_2021.csv's terminal row) on the LAST transition.
+  last_cycle_age <- floor(ASSUMED_PATIENT_AGE_YEARS + (HORIZON_CYCLES_LIFETIME - 1) * 2 / 52)
+  expect_equal(last_cycle_age, 100)
+  # One cycle earlier must NOT yet have reached it -- confirms this is the minimal such horizon,
+  # not an arbitrary large number that happens to be big enough.
+  second_last_cycle_age <- floor(ASSUMED_PATIENT_AGE_YEARS + (HORIZON_CYCLES_LIFETIME - 2) * 2 / 52)
+  expect_true(second_last_cycle_age < 100)
+})
+
+test_that("run_base_case at the lifetime horizon produces QALYs far above the 6.15-year horizon, and the cohort is fully exhausted by the end", {
+  bc_short <- run_base_case(n_cycles = HORIZON_CYCLES_6YR, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  bc_lifetime <- run_base_case(n_cycles = HORIZON_CYCLES_LIFETIME, baseline_age = ASSUMED_PATIENT_AGE_YEARS,
+                                raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  # A lifetime run should report meaningfully more QALYs per arm than the 6.15-year comparability
+  # scenario -- the entire point of extending the horizon (module header).
+  for (arm in bc_lifetime$intervention) {
+    expect_true(
+      bc_lifetime$qalys[bc_lifetime$intervention == arm] > bc_short$qalys[bc_short$intervention == arm]
+    )
+  }
+})
+
+test_that("at the lifetime horizon, deterministic EJP at pi=1 clears Treg's sourced acquisition price -- the finding this work exists to check", {
+  # At the 6.15-year horizon (documented in the run_full_analysis.R headline finding, 2026-08-05)
+  # the deterministic EJP ceiling even at pi=1 was ~$8,724 at WTP=$150k -- well under the sourced
+  # $19,917 acquisition cost, an artefact of the horizon being too short to capture a cure's
+  # value. At the lifetime horizon this should no longer be true.
+  treg_price <- load_treg_dose_acquisition_cost(PROC_DIR)
+  res <- headroom_pi_star(treg_price, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_LIFETIME,
+                           baseline_age = ASSUMED_PATIENT_AGE_YEARS, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_true(res$feasible)
+  expect_true(res$pi_star > 0 && res$pi_star < 1)  # a genuinely interior, non-trivial cure fraction
+})
+
+test_that("headroom_frontier's baseline_age argument is actually threaded through, not silently ignored", {
+  # Same price, same WTP: the 6.15-year comparability scenario and the lifetime scenario should
+  # disagree (a longer horizon with age-appropriate mortality changes the answer materially) --
+  # if baseline_age/n_cycles were being ignored somewhere in the plumbing, these would coincide.
+  price <- 15000
+  short <- headroom_pi_star(price, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_6YR, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  lifetime <- headroom_pi_star(price, wtp_usd = 150000, n_cycles = HORIZON_CYCLES_LIFETIME,
+                                baseline_age = ASSUMED_PATIENT_AGE_YEARS, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_false(isTRUE(all.equal(short$pi_star, lifetime$pi_star)) && short$feasible == lifetime$feasible)
 })

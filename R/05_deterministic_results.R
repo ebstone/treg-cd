@@ -23,17 +23,36 @@
 # pi and h; headroom_pi_star()/headroom_frontier() below are what carry the paper in the meantime,
 # exactly as Decision 4 recommends.
 #
-# ---- Horizon: 6.15-year, not lifetime ------------------------------------------------------------
+# ---- Horizon: lifetime, now implemented (2026-08-05) -----------------------------------------
 #
-# analysis_plan.md §4.1 recommends a LIFETIME horizon (6.15-year and 10-year as scenarios). Lifetime
-# requires US life-table mortality extrapolation beyond Aliyev's own trial-supported cycles, and no
-# life-table data has been sourced anywhere in this repository (checked: no file under data/raw/ or
-# data/processed/ contains one). Rather than silently truncate "lifetime" to whatever the transition
-# matrices happen to do past their trial-supported range, this pass implements only the two horizons
-# that need no unsourced extrapolation: HORIZON_CYCLES_6YR (Aliyev's own 40 x 8-week-cycle span,
-# converted to this project's native 2-week cycle) and HORIZON_CYCLES_10YR. A true lifetime run is a
-# real, flagged gap -- same class of "not silently done" omission as half-cycle correction (A12,
-# docs/model_audit_v6.md) and cyclophosphamide dose (R/04's module header) -- not implemented here.
+# analysis_plan.md §4.1 recommends a LIFETIME horizon (6.15-year and 10-year as comparability
+# scenarios). The blocker this module's header used to record here -- "no life-table data has
+# been sourced anywhere in this repository" -- is closed: data/raw/nchs_us_life_tables_2021.csv
+# (NCHS United States Life Tables, 2021, transcribed from the published PDF; see
+# R/utils/life_table.R's own module header for the full sourcing chain and the "why REPLACE, not
+# ADD, Aliyev's own trial-cohort mortality" reasoning) plus R/utils/transition_matrix.R's
+# age_adjust_matrix() and the death_prob_schedule wiring through R/02/R/03 (both files' own
+# headers) give every arm-runner in this file an opt-in `baseline_age` parameter: NULL (default)
+# reproduces the exact pre-lifetime-horizon behaviour (fixed matrices, Aliyev's own small trial
+# mortality figure, every existing test and result unchanged); ASSUMED_PATIENT_AGE_YEARS
+# (R/04_costs_utilities.R: 35, this study's own cohort mean) with `n_cycles =
+# HORIZON_CYCLES_LIFETIME` runs the lifetime base case and headroom frontier with age- and
+# sex-specific background mortality.
+#
+# HORIZON_CYCLES_6YR and HORIZON_CYCLES_10YR remain available as the comparability scenarios
+# analysis_plan.md §4.1 itself asks for (both still default to `baseline_age = NULL`, i.e.
+# Aliyev's own embedded mortality, unchanged from before this pass -- a 6-10 year run at a
+# baseline age of 35 is close enough to Aliyev's own trial-supported range that swapping in
+# life-table mortality there wouldn't materially change anything and isn't done by default; pass
+# `baseline_age` explicitly to any horizon if a mortality-basis-matched comparison is wanted).
+#
+# What this pass does NOT do: wire baseline_age/lifetime horizon through R/06_psa.R (the PSA),
+# R/07_evpi_evppi.R (EVPI/EVPPI), or R/08_ejp.R (EJP) -- those still run at HORIZON_CYCLES_6YR by
+# default, deterministic-only for the lifetime horizon in this pass. Extending age_adjust_matrix()
+# to every PSA draw (~40,000 arm-runner calls, each now potentially re-deriving up to 1,691
+# age-adjusted matrix pairs) is a real performance question this pass hasn't benchmarked, not
+# just a wiring exercise -- flagged as the next open item, same "not silently done" standard as
+# every other scope boundary in this file's history.
 #
 # ---- Aim 5 (external validation against Aliyev's own results): a scope limit worth recording ----
 #
@@ -82,6 +101,17 @@ HORIZON_CYCLES_6YR <- 160
 #' 10-year horizon scenario (analysis_plan.md §4.1): 10 * 52 / 2 = 260 native 2-week cycles.
 HORIZON_CYCLES_10YR <- 260
 
+#' Lifetime horizon (analysis_plan.md §4.1's recommended base case; see module header,
+#' "Horizon: lifetime, now implemented"). Sized so the LAST cycle's transition lands the cohort
+#' exactly at the life table's terminal age (data/raw/nchs_us_life_tables_2021.csv: age 100,
+#' qx = 1) starting from ASSUMED_PATIENT_AGE_YEARS (R/04_costs_utilities.R: 35) -- this fully
+#' exhausts the cohort by construction rather than leaving residual undiscounted mass alive
+#' forever, so there is no need to run further cycles "just in case."  Derivation:
+#' death_prob_schedule()'s attained-age formula (R/utils/life_table.R) is
+#' floor(35 + (t-1)*2/52); solving floor(35 + (t-1)*2/52) = 100 for the smallest such t gives
+#' t = 1691, i.e. (100 - 35) * 52 / 2 + 1 = 1691 native 2-week cycles = 65 years.
+HORIZON_CYCLES_LIFETIME <- 1691
+
 #' Willingness-to-pay thresholds to report (analysis_plan.md §4.1: "Report $50k, $100k, $150k").
 WTP_THRESHOLDS_USD <- c(50000, 100000, 150000)
 
@@ -122,11 +152,20 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 #' function many times over the SAME data, only varying `utilities`/`therapy` (R/06_psa.R's PSA
 #' loop, thousands of iterations) can load once and pass the same objects in on every call instead
 #' -- purely a performance path, output is identical either way.
+#'
+#' `baseline_age = NULL` (default): the induction+maintenance trace runs on a fixed matrix every
+#' cycle, exactly as before this parameter existed -- fully backward compatible (every 6.15-year/
+#' 10-year caller and test is unaffected; those horizons deliberately still run on Aliyev's own
+#' embedded trial-cohort mortality, module header). Pass a starting age (HORIZON_CYCLES_LIFETIME
+#' callers use ASSUMED_PATIENT_AGE_YEARS, R/04_costs_utilities.R) to instead route through
+#' run_maintenance_arm_with_mortality() (R/02_markov_engine.R) -- age- and sex-specific
+#' background mortality, sourced from `life_table` (R/utils/life_table.R's load_life_table(),
+#' loaded from `raw_dir` if not supplied).
 run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                          cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE,
                                          cap_cycle = 52, raw_dir = "data/raw", proc_dir = "data/processed",
                                          utilities = NULL, induction_data = NULL, schedule = NULL,
-                                         prices = NULL) {
+                                         prices = NULL, baseline_age = NULL, life_table = NULL) {
   therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
   stopifnot(all(c(therapy, "CT") %in% names(matrices)))
 
@@ -134,10 +173,19 @@ run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg =
   induction_row <- induction_data[induction_data$therapy == therapy, ]
   split <- run_decision_tree(induction_row)
 
-  arm <- run_maintenance_arm(
-    matrices[[therapy]], matrices[["CT"]], split$initial_on_biologic, n_cycles,
-    cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = split$initial_on_ct
-  )
+  if (is.null(baseline_age)) {
+    arm <- run_maintenance_arm(
+      matrices[[therapy]], matrices[["CT"]], split$initial_on_biologic, n_cycles,
+      cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = split$initial_on_ct
+    )
+  } else {
+    arm <- run_maintenance_arm_with_mortality(
+      matrices[[therapy]], matrices[["CT"]], split$initial_on_biologic, n_cycles,
+      baseline_age = baseline_age, cap_cycle = cap_cycle, apply_cap = apply_cap,
+      initial_on_ct = split$initial_on_ct, life_table = life_table, raw_dir = raw_dir,
+      cycle_weeks = cycle_weeks
+    )
+  }
 
   if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
   monitoring_costs <- health_state_monitoring_costs()
@@ -186,24 +234,41 @@ treg_price_dependent_dose_cost <- function(price_usd, cyclophosphamide_dose_mg =
 #' `induction_data`/`prices = NULL` (default): same caching mechanism as
 #' run_comparator_arm_lifetime()'s equivalent parameters -- load once, pass in on every call, for
 #' callers (R/06_psa.R) invoking this many times over unchanged source data.
+#'
+#' `baseline_age = NULL` (default): same meaning and same backward-compatibility guarantee as
+#' run_comparator_arm_lifetime()'s equivalent parameter -- see its docstring. Routes through
+#' run_treg_arm_with_mortality() (R/03_cure_fraction_module.R) when supplied, which applies
+#' background mortality to the pre-landmark UST-equivalent track, the post-landmark non-cured
+#' track, AND the SDR track itself (R/03's own module header on why SDR needed a death exit at
+#' all for a lifetime horizon to be sound).
 run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices,
                                    weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                    annual_rate = 0.03, landmark_cycle = 28, cap_cycle = 52,
                                    apply_cap = TRUE, cyclophosphamide_dose_mg = 0,
                                    observation_stay_cost_usd = 0, raw_dir = "data/raw",
                                    proc_dir = "data/processed", utilities = NULL,
-                                   induction_data = NULL, prices = NULL) {
+                                   induction_data = NULL, prices = NULL, baseline_age = NULL,
+                                   life_table = NULL) {
   stopifnot(all(c("UST", "CT") %in% names(matrices)))
 
   if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
   induction_row <- induction_data[induction_data$therapy == "UST", ]
   split <- run_decision_tree(induction_row)
 
-  arm <- run_treg_arm(
-    matrices[["UST"]], matrices[["CT"]], split$initial_on_biologic, split$initial_on_ct, n_cycles,
-    pi_sdr = pi_sdr, relapse_hazard_annual = relapse_hazard_annual, landmark_cycle = landmark_cycle,
-    cap_cycle = cap_cycle, apply_cap = apply_cap
-  )
+  if (is.null(baseline_age)) {
+    arm <- run_treg_arm(
+      matrices[["UST"]], matrices[["CT"]], split$initial_on_biologic, split$initial_on_ct, n_cycles,
+      pi_sdr = pi_sdr, relapse_hazard_annual = relapse_hazard_annual, landmark_cycle = landmark_cycle,
+      cap_cycle = cap_cycle, apply_cap = apply_cap
+    )
+  } else {
+    arm <- run_treg_arm_with_mortality(
+      matrices[["UST"]], matrices[["CT"]], split$initial_on_biologic, split$initial_on_ct, n_cycles,
+      pi_sdr = pi_sdr, relapse_hazard_annual = relapse_hazard_annual, baseline_age = baseline_age,
+      landmark_cycle = landmark_cycle, cap_cycle = cap_cycle, apply_cap = apply_cap,
+      life_table = life_table, raw_dir = raw_dir, cycle_weeks = cycle_weeks
+    )
+  }
 
   if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
   monitoring_costs <- health_state_monitoring_costs()
@@ -250,15 +315,20 @@ best_comparator_nmb <- function(comparator_summaries, wtp_usd) {
 #' price-as-swept-variable is headroom_frontier()'s job, below.
 #'
 #' Returns one row per arm: qalys, total_cost, and NMB at each of WTP_THRESHOLDS_USD.
+#' `baseline_age = NULL` (default): 6.15-year/10-year horizons, exactly as before this parameter
+#' existed (module header). Pass ASSUMED_PATIENT_AGE_YEARS with `n_cycles = HORIZON_CYCLES_LIFETIME`
+#' for the lifetime-horizon base case (analysis/run_full_analysis.R does this explicitly).
 run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                            cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
-                           raw_dir = "data/raw", proc_dir = "data/processed") {
+                           raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,
+                           life_table = NULL) {
   matrices <- build_all_transition_matrices(raw_dir)
 
   comparator_summaries <- stats::setNames(
     lapply(COMPARATOR_THERAPIES, function(tx) {
       run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
-                                   apply_cap, cap_cycle, raw_dir, proc_dir)
+                                   apply_cap, cap_cycle, raw_dir, proc_dir,
+                                   baseline_age = baseline_age, life_table = life_table)
     }),
     COMPARATOR_THERAPIES
   )
@@ -267,7 +337,8 @@ run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PAT
   treg_summary <- run_treg_arm_lifetime(
     n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
     weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
-    cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir
+    cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
+    baseline_age = baseline_age, life_table = life_table
   )
 
   all_summaries <- c(comparator_summaries, list(TREG = treg_summary))
@@ -302,17 +373,23 @@ run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PAT
 #'   - `NA`, `feasible = FALSE` (not cost-effective at this price even at pi = 1 -- the price is
 #'     simply too high for any cure fraction to rescue, and that is itself a reportable finding,
 #'     not an error)
+#' `baseline_age`/`life_table = NULL` (default): same meaning as
+#' run_comparator_arm_lifetime()'s equivalent parameters, threaded through to both the
+#' comparator summaries (if `comparator_summaries` isn't already supplied) and every
+#' treg_nmb_at_pi() evaluation below.
 headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
                               n_cycles = HORIZON_CYCLES_6YR, matrices = NULL,
                               comparator_summaries = NULL, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                               cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
-                              raw_dir = "data/raw", proc_dir = "data/processed") {
+                              raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,
+                              life_table = NULL) {
   if (is.null(matrices)) matrices <- build_all_transition_matrices(raw_dir)
   if (is.null(comparator_summaries)) {
     comparator_summaries <- stats::setNames(
       lapply(COMPARATOR_THERAPIES, function(tx) {
         run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
-                                     apply_cap, cap_cycle, raw_dir, proc_dir)
+                                     apply_cap, cap_cycle, raw_dir, proc_dir,
+                                     baseline_age = baseline_age, life_table = life_table)
       }),
       COMPARATOR_THERAPIES
     )
@@ -322,7 +399,8 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
   treg_nmb_at_pi <- function(pi_sdr) {
     s <- run_treg_arm_lifetime(
       n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices, weight_kg, cycle_weeks,
-      annual_rate, cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir
+      annual_rate, cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
+      baseline_age = baseline_age, life_table = life_table
     )
     net_monetary_benefit(s, wtp_usd)
   }
@@ -358,15 +436,19 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
 #' evaluated across a grid of prices, at one WTP threshold and relapse hazard. Rebuilds the
 #' transition matrices and comparator summaries ONCE for the whole grid (both are price/pi-
 #' independent), rather than once per price point.
+#' `baseline_age`/`life_table = NULL` (default): same meaning as headroom_pi_star()'s equivalent
+#' parameters, threaded through unchanged.
 headroom_frontier <- function(price_grid_usd, wtp_usd, relapse_hazard_annual = 0,
                                n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
-                               raw_dir = "data/raw", proc_dir = "data/processed") {
+                               raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,
+                               life_table = NULL) {
   matrices <- build_all_transition_matrices(raw_dir)
   comparator_summaries <- stats::setNames(
     lapply(COMPARATOR_THERAPIES, function(tx) {
       run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
-                                   apply_cap, cap_cycle, raw_dir, proc_dir)
+                                   apply_cap, cap_cycle, raw_dir, proc_dir,
+                                   baseline_age = baseline_age, life_table = life_table)
     }),
     COMPARATOR_THERAPIES
   )
@@ -374,7 +456,7 @@ headroom_frontier <- function(price_grid_usd, wtp_usd, relapse_hazard_annual = 0
   rows <- lapply(price_grid_usd, function(price) {
     res <- headroom_pi_star(price, wtp_usd, relapse_hazard_annual, n_cycles, matrices,
                              comparator_summaries, weight_kg, cycle_weeks, annual_rate, apply_cap,
-                             cap_cycle, raw_dir, proc_dir)
+                             cap_cycle, raw_dir, proc_dir, baseline_age, life_table)
     data.frame(price_usd = price, wtp_usd = wtp_usd, relapse_hazard_annual = relapse_hazard_annual,
                pi_star = res$pi_star, feasible = res$feasible)
   })

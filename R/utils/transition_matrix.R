@@ -57,6 +57,41 @@ matrix_power <- function(m, n) {
   result
 }
 
+#' Replace every non-Death row's Death-column probability with `death_prob`, uniformly (the "no
+#' CD excess mortality" assumption, analysis_plan.md §7.1 item 7 -- background mortality applies
+#' identically regardless of current CD health state, so one scalar per cycle is the right
+#' granularity, not one per state), rescaling that row's remaining entries proportionally so it
+#' still sums to exactly 1. The Death row itself (an absorbing self-loop, probability 1) is left
+#' untouched -- rescaling "probability of death, given already dead" isn't a meaningful
+#' operation. Used by R/02_markov_engine.R's lifetime-horizon path (R/utils/life_table.R) to
+#' substitute Aliyev's own small trial-cohort mortality figure for a life-table one at each
+#' cycle's attained age -- see that module's header for why REPLACE, not ADD.
+#'
+#' A row whose original Death probability was already 1 (a padded absorbing self-loop from
+#' build_transition_matrix(), e.g. the biologic-arm Moderate-Severe row -- see that function's
+#' own header) is left alone: an absorbing row has nowhere else to redistribute mass, and the
+#' rescaling below would divide by a zero denominator. A row with NO Death entry at all (the
+#' same padded self-loops, `old_death == 0`) is handled by the general formula correctly --
+#' `scale = (1 - death_prob) / (1 - 0)` shrinks the self-loop and installs `death_prob` in its
+#' place, which is exactly right: even a state this matrix treats as absorbing in isolation
+#' (M-S under a biologic arm, before R/02's own CT-switch mechanic sweeps it away) is not
+#' actually immune to background mortality for the one step it's evaluated.
+age_adjust_matrix <- function(m, death_prob) {
+  stopifnot(death_prob >= 0, death_prob <= 1, "Death" %in% colnames(m))
+  states <- rownames(m)
+  death_idx <- match("Death", states)
+  out <- m
+  for (i in seq_len(nrow(m))) {
+    if (i == death_idx) next
+    old_death <- m[i, death_idx]
+    if (old_death >= 1) next  # already fully absorbing; nothing left to rescale
+    scale <- (1 - death_prob) / (1 - old_death)
+    out[i, ] <- m[i, ] * scale
+    out[i, death_idx] <- death_prob
+  }
+  out
+}
+
 #' Long-format (from_state, to_state, probability) rows from a square matrix.
 matrix_to_long <- function(m, therapy) {
   states <- rownames(m)

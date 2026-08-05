@@ -62,3 +62,70 @@ test_that("matrix_to_long round-trips through build_transition_matrix", {
   )
   expect_equal(rebuilt, m)
 })
+
+# ---- age_adjust_matrix (lifetime horizon, 2026-08-05) -----------------------------------------
+
+test_that("age_adjust_matrix replaces Death probability and rescales the rest to still sum to 1", {
+  m <- matrix(
+    c(0.5, 0.3, 0.2, 0, 1, 0, 0, 0, 1),
+    nrow = 3, byrow = TRUE, dimnames = list(c("A", "B", "Death"), c("A", "B", "Death"))
+  )
+  adj <- age_adjust_matrix(m, 0.01)
+  expect_equal(unname(rowSums(adj)), rep(1, 3), tolerance = 1e-12)
+  expect_equal(unname(adj["A", "Death"]), 0.01)
+  # Ratio of A's non-Death entries is preserved (0.5:0.3 = 5:3), only the Death share moves.
+  expect_equal(unname(adj["A", "A"] / adj["A", "B"]), 0.5 / 0.3, tolerance = 1e-12)
+})
+
+test_that("age_adjust_matrix installs a Death probability into a row that had none (a padded absorbing self-loop)", {
+  # B has no Death entry at all (old_death = 0) -- e.g. build_transition_matrix()'s padding for a
+  # biologic arm's missing Moderate-Severe row.
+  m <- matrix(
+    c(0.5, 0.3, 0.2, 0, 1, 0, 0, 0, 1),
+    nrow = 3, byrow = TRUE, dimnames = list(c("A", "B", "Death"), c("A", "B", "Death"))
+  )
+  adj <- age_adjust_matrix(m, 0.02)
+  expect_equal(unname(adj["B", ]), c(0, 0.98, 0.02))
+})
+
+test_that("age_adjust_matrix(m, 0) zeroes every row's Death probability and rescales the rest up to still sum to 1", {
+  # NOT a no-op even though the target probability is 0 -- a row that already HAD a nonzero
+  # Death entry (A: 0.2) has that risk entirely removed and its mass redistributed
+  # proportionally to the survival states, same mechanic as any other target probability.
+  m <- matrix(
+    c(0.5, 0.3, 0.2, 0, 1, 0, 0, 0, 1),
+    nrow = 3, byrow = TRUE, dimnames = list(c("A", "B", "Death"), c("A", "B", "Death"))
+  )
+  adj <- age_adjust_matrix(m, 0)
+  expect_equal(unname(adj["A", "Death"]), 0)
+  expect_equal(unname(rowSums(adj)), rep(1, 3), tolerance = 1e-12)
+  expect_equal(unname(adj["A", "A"] / adj["A", "B"]), 0.5 / 0.3, tolerance = 1e-12)
+})
+
+test_that("age_adjust_matrix is a true no-op when death_prob already equals every row's own Death entry", {
+  m <- matrix(
+    c(0.5, 0.3, 0.2, 0.4, 0.4, 0.2, 0, 0, 1),
+    nrow = 3, byrow = TRUE, dimnames = list(c("A", "B", "Death"), c("A", "B", "Death"))
+  )
+  expect_equal(age_adjust_matrix(m, 0.2), m)
+})
+
+test_that("age_adjust_matrix leaves the Death row itself untouched", {
+  m <- matrix(
+    c(0.5, 0.3, 0.2, 0, 1, 0, 0, 0, 1),
+    nrow = 3, byrow = TRUE, dimnames = list(c("A", "B", "Death"), c("A", "B", "Death"))
+  )
+  adj <- age_adjust_matrix(m, 0.5)
+  expect_equal(unname(adj["Death", ]), c(0, 0, 1))
+})
+
+test_that("age_adjust_matrix leaves a row whose Death probability is already 1 alone (no division by zero)", {
+  # C is not the "Death" row itself, but is already 100% bound for it (old_death = 1) -- the
+  # denominator (1 - old_death) in age_adjust_matrix()'s rescale formula would be 0 here.
+  m <- matrix(
+    c(0.5, 0.3, 0.2, 0, 0, 1, 0, 0, 1),
+    nrow = 3, byrow = TRUE, dimnames = list(c("A", "C", "Death"), c("A", "C", "Death"))
+  )
+  adj <- age_adjust_matrix(m, 0.1)
+  expect_equal(unname(adj["C", ]), c(0, 0, 1))
+})

@@ -26,13 +26,18 @@
 #      each WTP threshold, ejp_frontier() as an independent cross-check of headroom_frontier()
 #      from the opposite direction (module header), ejp_probabilistic()/ejp_p50() from the PSA
 #      draws already in hand, and gross_margin_over_cogs() alongside every P* this script produces.
+#   6. Lifetime-horizon base case + headroom frontier (added 2026-08-05, same day as the
+#      lifetime-horizon build itself -- R/05's own module header, R/utils/life_table.R) --
+#      deterministic only in this pass (PSA/EVPI/EVPPI/probabilistic EJP still run at
+#      HORIZON_CYCLES_6YR; see R/05's module header for why extending age_adjust_matrix() to
+#      ~40,000 PSA arm-runner calls is a real, unbenchmarked performance question, not done here).
 #
 # Explicitly OUT of scope for this pass, same as prior module-level passes flagged in their own
 # headers: any figure (README: ggplot2-vs-base-graphics plotting decision not yet made -- tables
 # only here), the structural scenarios S1-S12 (analysis/run_scenario_analyses.R, still a stub),
-# and everything in the handoff doc's "still open" list (h sweep, pi prior-sensitivity reweighting,
-# lifetime horizon, half-cycle correction, refractory multipliers) -- this script runs the pipeline
-# as it exists today, it does not extend it.
+# and everything else in the handoff doc's "still open" list (h sweep, pi prior-sensitivity
+# reweighting, half-cycle correction, refractory multipliers) -- this script runs the pipeline as
+# it exists today, it does not extend it beyond the lifetime-horizon addition above.
 
 source("R/utils/transition_matrix.R")
 source("R/00_derive_transition_probs.R")
@@ -122,5 +127,28 @@ ejp_prob <- do.call(rbind, lapply(WTP_GRID, function(w) {
 }))
 print(ejp_prob, row.names = FALSE)
 write_table(ejp_prob, "ejp_probabilistic.csv")
+
+# ---- 6. Lifetime horizon (deterministic only this pass -- see module header) -------------------
+cat("\n=== 6/6: Lifetime horizon (deterministic base case + headroom frontier) ===\n")
+base_case_lifetime <- run_base_case(n_cycles = HORIZON_CYCLES_LIFETIME, baseline_age = ASSUMED_PATIENT_AGE_YEARS)
+print(base_case_lifetime, row.names = FALSE)
+write_table(base_case_lifetime, "base_case_results_lifetime.csv")
+
+frontier_lifetime <- do.call(rbind, lapply(WTP_GRID, function(w) {
+  headroom_frontier(PRICE_GRID, w, n_cycles = HORIZON_CYCLES_LIFETIME, baseline_age = ASSUMED_PATIENT_AGE_YEARS)
+}))
+write_table(frontier_lifetime, "headroom_frontier_lifetime.csv")
+
+# The headline check this whole addition exists to make: at Treg's actual sourced acquisition
+# price, what durable cure fraction does the lifetime horizon require, at each WTP threshold?
+treg_price <- load_treg_dose_acquisition_cost()
+headroom_at_sourced_price <- do.call(rbind, lapply(WTP_GRID, function(w) {
+  res <- headroom_pi_star(treg_price, wtp_usd = w, n_cycles = HORIZON_CYCLES_LIFETIME,
+                           baseline_age = ASSUMED_PATIENT_AGE_YEARS)
+  data.frame(wtp_usd = w, price_usd = treg_price, pi_star = res$pi_star, feasible = res$feasible)
+}))
+cat("\nRequired durable cure fraction (pi*) at Treg's sourced acquisition price ($", format(treg_price, big.mark = ","), "), lifetime horizon:\n", sep = "")
+print(headroom_at_sourced_price, row.names = FALSE)
+write_table(headroom_at_sourced_price, "headroom_at_sourced_price_lifetime.csv")
 
 cat("\nDone. All tables in output/tables/.\n")
