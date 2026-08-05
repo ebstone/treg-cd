@@ -420,6 +420,14 @@ actively used but never recorded. `renv::snapshot()` fixed this (29 packages now
 is expected and already documented (`voi`/`BCEA` cross-check deprioritized, R/07's own module
 header) rather than a new finding. This section rewritten accordingly.
 
+**`docs/model_structure.md` written (2026-08-05)**, closing the resolutions memo's item 10
+("write it last, after items 1-6 have changed the model — writing it now guarantees rewriting
+it"). Replaces the 5-line stub with a real technical specification of the engine as implemented
+across `R/00`-`R/09`: health states, the induction/maintenance/mixture-cure structure, every
+structural scenario's mechanism cross-referenced to the section it modifies, and a module index.
+Deliberately scoped to "what the code does," not the design rationale (`docs/analysis_plan.md`
+§6 remains the place for that) — the two are meant to stay separate, not merged.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,
@@ -431,7 +439,9 @@ header) rather than a new finding. This section rewritten accordingly.
 - `docs/model_audit_v6.md` — audit findings (14 defects/undocumented choices) from the existing
   Excel workbooks.
 - `docs/CHEERS_2022_checklist.md` — working CHEERS 2022 submission checklist.
-- `docs/model_structure.md` — technical model spec, to be written alongside the `R/` engine.
+- `docs/model_structure.md` — technical model spec (health states, transition structure,
+  mixture-cure extension, cost/utility attachment) kept in sync with the code, written 2026-08-05
+  after the `R/` engine reached its current state.
 - `R/` — analysis pipeline (decision tree, Markov engine, cure module, costs/utilities,
   deterministic results, PSA, EVPI/EVPPI, EJP, structural scenarios) — built out end to end as of
   2026-08-05 (see Status above), not stubs.
