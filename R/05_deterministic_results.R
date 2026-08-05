@@ -110,14 +110,28 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 #' build_all_transition_matrices()'s output (or a compatible named list with `therapy` and "CT"
 #' entries) -- passed in rather than rebuilt here so run_base_case() only pays the CSV-read/
 #' validation cost once for however many arms it runs.
+#'
+#' `utilities = NULL` (default) loads the deterministic base-case values from `proc_dir`, as
+#' before. R/06_psa.R passes its own per-draw sampled utility vector here instead -- utilities
+#' apply identically to every arm (utility depends only on health state, not which arm a patient
+#' is on), so a given PSA draw's utility sample must reach every arm's attachment call, not just
+#' Treg's; this parameter is what makes that possible without R/06 reimplementing this function.
+#'
+#' `induction_data`/`schedule`/`prices = NULL` (default): load from `raw_dir`/`proc_dir`, as
+#' before -- a single call pays the CSV-read cost three times (once each). Callers running this
+#' function many times over the SAME data, only varying `utilities`/`therapy` (R/06_psa.R's PSA
+#' loop, thousands of iterations) can load once and pass the same objects in on every call instead
+#' -- purely a performance path, output is identical either way.
 run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                          cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE,
-                                         cap_cycle = 52, raw_dir = "data/raw", proc_dir = "data/processed") {
+                                         cap_cycle = 52, raw_dir = "data/raw", proc_dir = "data/processed",
+                                         utilities = NULL, induction_data = NULL, schedule = NULL,
+                                         prices = NULL) {
   therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
   stopifnot(all(c(therapy, "CT") %in% names(matrices)))
 
-  induction_row <- load_published_induction(raw_dir)
-  induction_row <- induction_row[induction_row$therapy == therapy, ]
+  if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
+  induction_row <- induction_data[induction_data$therapy == therapy, ]
   split <- run_decision_tree(induction_row)
 
   arm <- run_maintenance_arm(
@@ -125,10 +139,10 @@ run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg =
     cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = split$initial_on_ct
   )
 
-  utilities <- load_health_state_utilities(proc_dir)
+  if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
   monitoring_costs <- health_state_monitoring_costs()
-  schedule <- load_dosing_schedule(raw_dir)
-  prices <- load_drug_prices(raw_dir)
+  if (is.null(schedule)) schedule <- load_dosing_schedule(raw_dir)
+  if (is.null(prices)) prices <- load_drug_prices(raw_dir)
 
   attached <- attach_maintenance_costs_utilities(
     arm, utilities, monitoring_costs, cycle_weeks, annual_rate,
@@ -164,16 +178,25 @@ treg_price_dependent_dose_cost <- function(price_usd, cyclophosphamide_dose_mg =
 #' maintenance matrix for the pre-landmark and non-cured tracks, per R/03_cure_fraction_module.R's
 #' module header ("efficacy-equivalent to ustekinumab... there is no separate Treg transition
 #' matrix to source") -- not an independent parameter choice made here.
+#'
+#' `utilities = NULL` (default): see run_comparator_arm_lifetime()'s docstring -- same override
+#' mechanism, same reason (R/06_psa.R needs one sampled utility vector applied consistently across
+#' every arm within a single PSA draw).
+#'
+#' `induction_data`/`prices = NULL` (default): same caching mechanism as
+#' run_comparator_arm_lifetime()'s equivalent parameters -- load once, pass in on every call, for
+#' callers (R/06_psa.R) invoking this many times over unchanged source data.
 run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices,
                                    weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                    annual_rate = 0.03, landmark_cycle = 28, cap_cycle = 52,
                                    apply_cap = TRUE, cyclophosphamide_dose_mg = 0,
                                    observation_stay_cost_usd = 0, raw_dir = "data/raw",
-                                   proc_dir = "data/processed") {
+                                   proc_dir = "data/processed", utilities = NULL,
+                                   induction_data = NULL, prices = NULL) {
   stopifnot(all(c("UST", "CT") %in% names(matrices)))
 
-  induction_row <- load_published_induction(raw_dir)
-  induction_row <- induction_row[induction_row$therapy == "UST", ]
+  if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
+  induction_row <- induction_data[induction_data$therapy == "UST", ]
   split <- run_decision_tree(induction_row)
 
   arm <- run_treg_arm(
@@ -182,13 +205,13 @@ run_treg_arm_lifetime <- function(n_cycles, pi_sdr, relapse_hazard_annual, price
     cap_cycle = cap_cycle, apply_cap = apply_cap
   )
 
-  utilities <- load_health_state_utilities(proc_dir)
+  if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
   monitoring_costs <- health_state_monitoring_costs()
   attached <- attach_treg_costs_utilities(
     arm, utilities, monitoring_costs, cycle_weeks, annual_rate, halve_after_cycle = cap_cycle
   )
 
-  prices <- load_drug_prices(raw_dir)
+  if (is.null(prices)) prices <- load_drug_prices(raw_dir)
   dose_cost <- treg_price_dependent_dose_cost(
     price_usd, cyclophosphamide_dose_mg, observation_stay_cost_usd, prices = prices
   )

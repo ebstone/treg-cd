@@ -70,6 +70,29 @@ in this repo — only Aliyev's transition-probability appendix was transcribed, 
 utility parameters or a results table to diff against, since this project deliberately re-sources
 costs from current CMS pricing rather than his 2017 figures.
 
+`R/06_psa.R` (first pass, 2026-08-05): 10,000-draw Monte Carlo PSA, sampling the two parameter
+groups with an actual sourced distribution on file — the utility chain (Uniform bounds from
+`data/processed/model_psa_parameter_distributions.csv`, sampled and chained multiplicatively per
+analysis_plan.md §10.2's requirement) and Treg's acquisition price (Gamma via method-of-moments,
+verified to reproduce analysis_plan.md item 12's own cited α≈15.4/scale≈1,297 figures exactly) —
+plus the cure fraction π under Decision 4's own recorded Uniform(0,1) fallback. Everything else
+(transition probabilities, relapse hazard h, comparator drug/monitoring costs) is held fixed at
+its base-case value this pass; `sample_dirichlet_row()` is a general, tested utility ready for
+transition-probability sampling once a sourced concentration parameter exists, but nothing calls
+it yet — none of Aliyev's own published Table 3/4 rows come with a usable sample size in this
+repo. Outputs: `psa_cost_effectiveness_plane()` and `psa_ceac()`. Deferred: the EJP posterior
+(needs `R/08_ejp.R`, still a stub) and the CEAF (a presentation decision, not a computation this
+module is blocked on). **New finding while building this: A16** (`docs/model_audit_v6.md`) — the
+Remission utility `R/04`/`R/05` actually run on (0.9554, from `model_health_utilities.csv`)
+doesn't match the 0.82 base value analysis_plan.md §7.1 item 19 and the PSA distribution file
+itself cite for the same quantity. Doesn't block PSA sampling (a Uniform only needs correct
+bounds, not a correct centre) but is unreconciled and flagged for co-author attention. Added
+caching parameters (`induction_data`/`schedule`/`prices`, all optional) to
+`R/05_deterministic_results.R`'s arm-runners to keep a 10,000-draw PSA's runtime reasonable (cut
+wall-clock time by roughly a third by not re-reading the same three CSVs on every one of the
+~40,000 arm-runner calls a full PSA makes); fully backward-compatible, all existing R/05 tests
+still pass unchanged. 14 new tests (78 passing total).
+
 **Market-comparator context added 2026-08-05** (not a model parameter, not part of any Gate):
 `data/raw/market_comparator_cell_therapy_prices.csv` records two real allogeneic-cell-therapy
 prices — Ryoncil ($194,000/infusion, Mesoblast's FDA-approved MSC therapy) and
