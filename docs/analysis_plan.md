@@ -270,7 +270,7 @@ Distributions follow standard practice: Dirichlet for multinomial transitions ou
 | 14 | UST / IFX / ADA acquisition | CMS ASP, single stated pricing date | Gamma | **Re-extract** — see 4.2 (biosimilars) |
 | 15 | Drug administration | CMS Physician Fee Schedule, HCPCS per product billing guides ($119.36 in current model) | Gamma | Sourced |
 | 16 | Health-state monitoring/management | Malone et al. via Aliyev, inflated to 2025 USD — see Section 8 | Gamma | **Reconciled** — see Section 8 |
-| 17 | Surgery episode | HCUP colectomy cost, $35,518 | Gamma | Sourced — document the HCUP year, DRG/procedure definition and whether it is charges or costs |
+| 17 | Surgery state (per-cycle, not a one-time episode) | Aliyev $884 (2017) → $1,152.29 (2025), same treatment as items 16/18. Applied identically across TREG/UST/IFX/CT (Aliyev Costs Assumption #1). HCUP colectomy cost dropped from the base case — see Appendix A, finding A9 resolution | Gamma | **Reconciled 2026-08-04** — residual gap: $884 does not cleanly reconstruct from Suppl. Table 2's $1,475 PMPM; same open item as 16/18, not new |
 | 18 | CT cycle cost | Aliyev $67 (2017) → ~$87.5 (2025) **plus** health-state costs | Gamma | **Fix required** (Appendix A, finding 9) |
 | **Utilities** |
 | 19 | Remission utility 0.82 | Aliyev / NICE TA352 (vedolizumab GEMINI) | Beta (re-parameterised from the 0.66–0.98 range) | Sourced |
@@ -330,7 +330,7 @@ Separately, re-verifying the *arithmetic* this section previously presented turn
 | Mild | $91 | $152 (direct PMPM total, no formula) | $118.62 (Supplement 1: $119) | 1.3035 |
 | Remission | $10 | $17 (direct PMPM total) | $13.04 (Supplement 1: $13) | 1.3035 |
 | Conventional therapy | $67 | $111 (direct PMPM pharmacy) | $87.53 | ~1.306 |
-| Surgery | $884 | $1,475 (direct PMPM total) | **$35,518 — replaced, not inflated**, with an HCUP colectomy episode cost | n/a |
+| Surgery | $884 | $1,475 (direct PMPM total) | **$1,152.29** — Aliyev's own per-cycle figure, inflated by 1.3035 like every other row (was $35,518, an HCUP colectomy episode cost, replaced rather than inflated; resolved 2026-08-04, see Appendix A finding A9) | 1.3035 |
 
 **The currency-year reconciliation holds**: the workbook/Supplement 1's 2025 USD figures are Aliyev's own 2017 USD figures (left column) inflated by ≈1.3035, consistently across every line — that part of the original reconciliation was correct and still stands.
 
@@ -601,6 +601,8 @@ Each requires an explicit yes/no or selection. Record the outcome, with date, in
 *Recommendation:* **Adopt 2025 USD throughout** (or 2026, if publication timing warrants). The reconciliation is resolved in §8: Aliyev's 2017 per-cycle costs ($217 M-S and M-SR, $91 Mild, $10 Remission, $67 CT) inflated by ≈1.3035 give the workbook's 2025 figures ($282.86 / $118.62 / $13.04 / $87.53); surgery was replaced with an HCUP episode cost rather than inflated. **Two fixes required:** name and cite the inflation index, and correct the Treg arm, which is currently charged un-inflated 2017 health-state costs.
 *Would change if:* a co-author can identify a different index actually used, in which case document that one.
 *Recorded 2026-08-04 (E. Stone):* **2025 USD throughout — adopted as recommended**, per the reconciliation already resolved in §8. The two required fixes (name/cite the inflation index; correct the Treg arm's un-inflated 2017 health-state costs) carry forward as implementation tasks for the costs/utilities module (`R/04_costs_utilities.R`), not open decisions. Final.
+
+*Addendum, 2026-08-04:* the surgery/HCUP substitution named in this decision's own rationale line ("surgery was replaced with an HCUP episode cost rather than inflated") was never actually revisited — it was recorded as accepted fact, not evaluated. It should not have been: Appendix A finding A9 already flagged it as needing an explicit decision, and it does not survive review. Aliyev's Surgery state is not a colectomy proxy (see A9 resolution in `docs/model_audit_v6.md`); the HCUP colectomy episode cost ($30,389–$35,518) is dropped from the base case and replaced with Aliyev's own per-cycle Surgery figure, inflated on the same basis as items 16/18 (→ $1,152.29, 2025 USD), applied identically across all four arms including Treg. Item 17 above and `data/processed/model_health_state_costs.csv` updated accordingly. This closes A9's "explicit decision" requirement as part of Decision 5 rather than as a separate decision, since it is the same cost-reconciliation exercise, not a new modelling choice.
 
 **☑ Decision 6 — Population and horizon for monetised EVPI/EVPPI.**
 *Recommendation:* **Incident plus prevalent eligible US moderate-to-severe CD population, over a 10-year decision horizon, discounted at 3%; reported separately for the biologic-naïve-eligible and refractory-eligible denominators.**
