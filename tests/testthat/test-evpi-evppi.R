@@ -154,3 +154,149 @@ test_that("evppi_convergence rejects a draw count larger than what's in psa_resu
   psa <- run_psa(n_draws = 50, raw_dir = RAW_DIR, proc_dir = PROC_DIR, seed = 15)
   expect_error(evppi_convergence(psa, "pi_sdr", 100000, draw_counts = c(100)))
 })
+
+# ---- pi prior-sensitivity on EVPPI (resolutions memo sec 3.2) -----------------------------------
+
+test_that("evpi_from_nb with weights = NULL is byte-identical to the original unweighted formula", {
+  set.seed(20)
+  nb <- cbind(A = rnorm(200, 10, 2), B = rnorm(200, 9, 2))
+  expect_equal(evpi_from_nb(nb, weights = NULL), evpi_from_nb(nb))
+  expect_equal(evpi_from_nb(nb, weights = rep(1, 200)), evpi_from_nb(nb))
+})
+
+test_that("evpi_from_nb's weights argument matches a hand-computed weighted expectation", {
+  # Two draws, weight draw 2 three times as heavily as draw 1.
+  nb <- cbind(A = c(10, 2), B = c(4, 8))
+  w <- c(1, 3)
+  wn <- w / sum(w)
+  expected <- sum(c(10, 8) * wn) - max(sum(c(10, 2) * wn), sum(c(4, 8) * wn))
+  expect_equal(evpi_from_nb(nb, weights = w), expected)
+})
+
+test_that("evpi_from_nb rejects a weights vector of the wrong length or with a negative entry", {
+  nb <- cbind(A = c(10, 2), B = c(4, 8))
+  expect_error(evpi_from_nb(nb, weights = c(1, 1, 1)))
+  expect_error(evpi_from_nb(nb, weights = c(1, -1)))
+})
+
+test_that("prior_reweight under the reference U(0,1) density itself returns all-equal weights (no reweighting)", {
+  set.seed(21)
+  pi_values <- runif(500)
+  w <- prior_reweight(pi_values, function(pi) stats::dunif(pi, 0, 1))
+  expect_true(all(abs(w - 1) < 1e-10))
+})
+
+test_that("prior_reweight's weights have mean 1 and are strictly positive for a proper alternative density", {
+  set.seed(22)
+  pi_values <- runif(500)
+  w_beta13 <- prior_reweight(pi_values, function(pi) stats::dbeta(pi, 1, 3))
+  expect_equal(mean(w_beta13), 1, tolerance = 1e-10)
+  expect_true(all(w_beta13 >= 0))
+  # Beta(1,3) puts more mass near 0: low-pi draws should get upweighted relative to high-pi draws.
+  low <- w_beta13[pi_values < 0.2]
+  high <- w_beta13[pi_values > 0.8]
+  expect_true(mean(low) > mean(high))
+})
+
+test_that("prior_reweight rejects a density that goes negative or non-finite anywhere it's evaluated", {
+  pi_values <- c(0.1, 0.5, 0.9)
+  expect_error(prior_reweight(pi_values, function(pi) -pi))
+  expect_error(prior_reweight(pi_values, function(pi) rep(NA_real_, length(pi))))
+})
+
+test_that("evppi_gam with weights = NULL reproduces the unweighted estimate exactly", {
+  set.seed(23)
+  n <- 800
+  x <- runif(n)
+  nb <- cbind(A = 10 * x + rnorm(n, 0, 0.02), B = 5 + rnorm(n, 0, 0.02))
+  est_default <- evppi_gam(nb, cbind(x = x))
+  est_explicit_null <- evppi_gam(nb, cbind(x = x), weights = NULL)
+  expect_equal(est_default, est_explicit_null)
+})
+
+test_that("evppi_gam with uniform weights reproduces the unweighted estimate", {
+  set.seed(24)
+  n <- 800
+  x <- runif(n)
+  nb <- cbind(A = 10 * x + rnorm(n, 0, 0.02), B = 5 + rnorm(n, 0, 0.02))
+  est_unweighted <- evppi_gam(nb, cbind(x = x))
+  est_uniform_weighted <- evppi_gam(nb, cbind(x = x), weights = rep(2, n))  # any constant, not just 1
+  expect_equal(est_uniform_weighted, est_unweighted, tolerance = 1e-6)
+})
+
+test_that("evppi_by_subset's weights argument is threaded consistently, and shrinks subset A's EVPPI when pi's high-spread region is downweighted", {
+  # A controlled synthetic PSA rather than a real (noisy, often near-zero-EVPI at small n) Markov
+  # run: TREG's net benefit is constructed to depend STRONGLY and near-linearly on pi (mimicking
+  # the headroom relationship -- higher cure fraction, better NMB), comparator flat aside from
+  # independent noise, so essentially all decision-relevant uncertainty is attributable to subset
+  # A (pi) by construction -- a regime where reweighting's effect is large enough to see clearly,
+  # not lost in GAM estimation noise.
+  set.seed(25)
+  n <- 1500
+  pi_vals <- stats::runif(n)
+  treg_nmb <- 20000 * pi_vals + stats::rnorm(n, 0, 200)
+  comp_nmb <- rep(10000, n) + stats::rnorm(n, 0, 200)
+  wtp <- 100000
+  qalys_common <- 5
+  # util_* columns get tiny per-draw jitter (not a constant) purely so reduce_for_gam()'s PCA step
+  # on subset E has non-zero variance to work with -- they don't otherwise enter this synthetic
+  # nb's construction at all, so they contribute ~0 to any subset's EVPPI either way.
+  jitter <- function(center) rep(center, n) + stats::rnorm(n, 0, 1e-6)
+  # treg_price also gets jitter, not a literal constant: subsets that pool it with the util
+  # columns (e.g. "C u E") PCA-reduce their raw matrix (reduce_for_gam()), and prcomp() itself
+  # refuses to scale a genuinely zero-variance column -- a real constraint of that step, not
+  # something this synthetic fixture should paper over by avoiding those subsets.
+  psa_toy <- data.frame(
+    draw = rep(1:n, 2), intervention = rep(c("TREG", "COMP"), each = n), qalys = qalys_common,
+    total_cost = c(wtp * qalys_common - treg_nmb, wtp * qalys_common - comp_nmb),
+    pi_sdr = c(pi_vals, rep(NA_real_, n)), treg_price = c(jitter(15000), rep(NA_real_, n)),
+    util_modsev = rep(jitter(0.5), 2), util_resp = rep(jitter(0.6), 2),
+    util_mild = rep(jitter(0.7), 2), util_remission = rep(jitter(0.8), 2),
+    util_surgery = rep(jitter(0.4), 2),
+    stringsAsFactors = FALSE
+  )
+
+  res_unweighted <- evppi_by_subset(psa_toy, wtp_usd = wtp)
+  # Beta(1,3) puts most of its mass below pi ~ 0.3 -- downweighting the high-pi draws that drive
+  # most of TREG's NMB spread should shrink subset A's estimated EVPPI (and the total EVPI it's
+  # nearly all of) relative to the reference U(0,1) prior.
+  w <- prior_reweight(pi_vals, function(pi) stats::dbeta(pi, 1, 3))
+  res_weighted <- evppi_by_subset(psa_toy, wtp_usd = wtp, weights = w)
+
+  expect_setequal(res_weighted$subset, res_unweighted$subset)
+  expect_true(all(res_weighted$total_evpi == res_weighted$total_evpi[1]))  # internally consistent
+  expect_true(res_weighted$evppi[res_weighted$subset == "A"] < res_unweighted$evppi[res_unweighted$subset == "A"])
+  expect_true(res_weighted$total_evpi[1] < res_unweighted$total_evpi[1])
+})
+
+test_that("evppi_prior_sensitivity returns one full subset table per prior, with a stable subset set and a within-prior rank", {
+  psa <- run_psa(n_draws = 300, raw_dir = RAW_DIR, proc_dir = PROC_DIR, seed = 17)
+  res <- evppi_prior_sensitivity(psa, wtp_usd = 100000)
+
+  expect_setequal(res$prior, names(PI_PRIOR_SENSITIVITY_SPECS))
+  expect_equal(nrow(res), length(PI_PRIOR_SENSITIVITY_SPECS) * 7)  # 7 subsets, per evppi_by_subset()
+
+  # Every prior's rows should carry the SAME 7 subsets.
+  for (p in unique(res$prior)) {
+    expect_setequal(res$subset[res$prior == p], c("A", "C", "E", "A u C", "A u E", "C u E", "A u C u E"))
+  }
+
+  # rank_within_prior is an integer rank within each prior group (ties -> shared minimum rank, so
+  # small GAM-noise ties near 0 don't produce non-integer ranks), highest EVPPI = rank 1.
+  for (p in unique(res$prior)) {
+    sub <- res[res$prior == p, ]
+    expect_true(all(sub$rank_within_prior == round(sub$rank_within_prior)))
+    expect_true(min(sub$rank_within_prior) == 1)
+    expect_true(max(sub$rank_within_prior) <= nrow(sub))
+    expect_true(sub$rank_within_prior[which.max(sub$evppi)] == 1)
+  }
+
+  # The reference U(0,1) row should reproduce evppi_by_subset()'s own unweighted result exactly --
+  # prior_reweight() under its own generating density returns all-1 weights (tested above), so
+  # this prior's pass through evppi_by_subset() must be numerically identical to the plain call.
+  reference <- res[res$prior == "U(0,1) [reference]", ]
+  reference <- reference[order(reference$subset), ]
+  plain <- evppi_by_subset(psa, wtp_usd = 100000)
+  plain <- plain[order(plain$subset), ]
+  expect_equal(reference$evppi, plain$evppi, tolerance = 1e-6)
+})

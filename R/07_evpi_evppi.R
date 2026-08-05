@@ -54,6 +54,20 @@
 # "how much does not-yet-knowing-the-price cost us") -- but both are worth stating explicitly so
 # a reader doesn't assume price is being treated the same way in both outputs.
 #
+# ---- pi prior-sensitivity on EVPPI (added 2026-08-05, docs/treg-cd_decision_resolutions_2026-08-05.md sec 3.2) --
+#
+# U(0,1) (Decision 4's own recorded fallback for pi) maximises prior variance on pi, which makes
+# pi come out as the dominant EVPPI parameter "more or less by construction" -- a competent
+# reviewer would read that as an artefact of the prior, not a finding, unless it's checked.
+# prior_reweight() + evppi_prior_sensitivity() below re-estimate evppi_by_subset() under two
+# alternative priors for pi (Beta(1,3): mass toward low cure fractions, consistent with the
+# Ovasave/CATS1 experience; Beta(2,2): symmetric, informative) via importance-weighting the SAME
+# 10,000 PSA draws R/06_psa.R already produced -- no re-simulation, exactly as the memo specifies.
+# The stated finding to report is the RANKING of subsets by EVPPI (expected to be stable across
+# all three priors) vs. the LEVEL (expected to shift with the prior) -- evppi_prior_sensitivity()
+# computes both; `rank_within_prior` makes the ranking-stability claim directly checkable from the
+# returned table rather than requiring a second pass over it.
+#
 # ---- Not yet implemented in this pass -------------------------------------------------------------
 #
 # - **Population EVPI** (analysis_plan.md sec 9.4, Decision 6). population_evpi() implements the
@@ -64,7 +78,10 @@
 #   parameterisation work.
 # - **EVPPI for subsets B/D/F/G** (relapse hazard h; comparator maintenance transitions; induction
 #   response probabilities; surgery transitions/cost) -- undefined until R/06_psa.R actually
-#   samples those parameters (module header, R/06_psa.R, explains why each isn't sampled yet).
+#   samples those parameters (module header, R/06_psa.R, explains why each isn't sampled yet). The
+#   h sweep added the same day as this prior-sensitivity work (R/05_deterministic_results.R's
+#   headroom_frontier_by_duration()) is a DETERMINISTIC sweep over the relapse hazard, not a PSA
+#   sample of it -- it doesn't change this; subset B remains undefined here.
 # - **The voi/BCEA cross-check** analysis_plan.md sec 9.3 asks for -- see above; written
 #   (cross_check_voi()) but inert in this environment.
 
@@ -78,9 +95,20 @@ if (!exists("run_psa")) source("R/06_psa.R")
 #' the decision made with perfect foresight, minus the benefit of the single best decision made
 #' under current information. Always >= 0 (Jensen's inequality on max()); 0 exactly when one arm
 #' dominates in every draw, i.e. there is no decision uncertainty left to resolve.
-evpi_from_nb <- function(nb) {
+#'
+#' `weights = NULL` (default): every draw counted equally, i.e. the expectation is taken under
+#' whatever prior actually generated the draws (R/06_psa.R: pi ~ U(0,1), Decision 4's fallback) --
+#' exactly the prior arithmetic this function always had, byte-identical to before `weights`
+#' existed. A non-NULL vector (same length as `nrow(nb)`, needn't already sum to 1 -- renormalised
+#' internally) re-weights the SAME draws to approximate the expectation under a DIFFERENT prior
+#' via importance sampling (prior_reweight() below computes exactly such a vector) -- no new PSA
+#' draws, no re-simulation, per `docs/treg-cd_decision_resolutions_2026-08-05.md` §3.2.
+evpi_from_nb <- function(nb, weights = NULL) {
   nb <- as.matrix(nb)
-  mean(apply(nb, 1, max)) - max(colMeans(nb))
+  if (is.null(weights)) weights <- rep(1, nrow(nb))
+  stopifnot(length(weights) == nrow(nb), all(weights >= 0))
+  w <- weights / sum(weights)
+  sum(apply(nb, 1, max) * w) - max(colSums(nb * w))
 }
 
 #' Wide draws x arms net-benefit matrix at a given WTP threshold, built from R/06_psa.R's
@@ -166,7 +194,17 @@ pca_reduce <- function(draws_matrix, n_components = 2) {
 #' evppi_by_subset() below always pre-reduces via reduce_for_gam() first, so in practice this
 #' module never actually exercises the d>=3 branch itself; it exists for evppi_gam() to still be
 #' safe to call directly with a wider parameter matrix.
-evppi_gam <- function(nb, param_matrix, max_basis_size = 200) {
+#'
+#' `weights = NULL` (default): unweighted `mgcv::gam()` fit and a plain-mean EVPPI formula,
+#' byte-identical to before `weights` existed. A non-NULL vector is passed straight through as
+#' `mgcv::gam()`'s own `weights` argument (its standard prior-weights mechanism, the same one
+#' `glm()` uses) AND into the final EVPPI arithmetic via `evpi_from_nb()`'s own weights argument --
+#' both stages of the estimator need to agree on the prior, not just the regression fit, or the
+#' fitted E[NB|subset] curve and the E[max(...)] it's compared against would be computed under two
+#' different priors. Existing solely so evppi_by_subset() can implement
+#' `docs/treg-cd_decision_resolutions_2026-08-05.md` §3.2's prior-sensitivity analysis by
+#' re-weighting the SAME draws under alternative priors for pi, with no re-simulation.
+evppi_gam <- function(nb, param_matrix, max_basis_size = 200, weights = NULL) {
   param_matrix <- as.matrix(param_matrix)
   stopifnot(nrow(param_matrix) == nrow(nb))
   d <- ncol(param_matrix)
@@ -184,11 +222,14 @@ evppi_gam <- function(nb, param_matrix, max_basis_size = 200) {
 
   fitted <- vapply(colnames(nb), function(arm) {
     df$nb_arm <- nb[, arm]
-    fit <- mgcv::gam(stats::as.formula(paste("nb_arm ~", smooth_term)), data = df, method = "REML")
+    fit <- mgcv::gam(stats::as.formula(paste("nb_arm ~", smooth_term)), data = df, method = "REML",
+                      weights = weights)
     as.numeric(stats::predict(fit))
   }, numeric(nrow(nb)))
 
-  mean(apply(fitted, 1, max)) - max(colMeans(nb))
+  w <- if (is.null(weights)) rep(1, nrow(nb)) else weights
+  w <- w / sum(w)
+  sum(apply(fitted, 1, max) * w) - max(colSums(nb * w))
 }
 
 #' PCA-reduce `m` to `n_components` columns only if it has more than `max_raw_dims` columns to
@@ -233,9 +274,18 @@ reduce_for_gam <- function(m, max_raw_dims = 2, n_components = 2) {
 #' three comparators (R/06_psa.R's run_psa(), by construction -- they don't depend on either),
 #' while the 5 util_* columns are identical across all 4 arms within a draw, so reading them from
 #' TREG's rows alone is not a loss of information, just a convenient single source with no NAs.
-evppi_by_subset <- function(psa_results, wtp_usd) {
+#'
+#' `weights = NULL` (default): every draw counted equally under the prior that actually generated
+#' it (U(0,1) for pi, module header) -- unchanged from before `weights` existed. A non-NULL vector
+#' (one weight per draw, in ascending-draw-index order -- prior_reweight()'s own output, or
+#' evppi_prior_sensitivity()'s caller of it, already produces weights in this order) is threaded
+#' into both `evpi_from_nb()` (the total-EVPI denominator) and every `evppi_gam()` call (the
+#' subset numerators), so the whole table -- total EVPI, each subset's EVPPI, and each
+#' `proportion_of_total_evpi` -- is internally consistent under the SAME re-weighted prior, not a
+#' mix of the reference prior in one place and the alternative in another.
+evppi_by_subset <- function(psa_results, wtp_usd, weights = NULL) {
   nb <- net_benefit_matrix(psa_results, wtp_usd)
-  total_evpi <- evpi_from_nb(nb)
+  total_evpi <- evpi_from_nb(nb, weights)
 
   treg <- psa_results[psa_results$intervention == "TREG", ]
   treg <- treg[order(treg$draw), ]
@@ -252,7 +302,7 @@ evppi_by_subset <- function(psa_results, wtp_usd) {
   )
 
   reduced <- lapply(raw_subsets, reduce_for_gam)
-  evppi_vals <- vapply(reduced, function(r) evppi_gam(nb, r$matrix), numeric(1))
+  evppi_vals <- vapply(reduced, function(r) evppi_gam(nb, r$matrix, weights = weights), numeric(1))
 
   data.frame(
     subset = names(reduced), evppi = evppi_vals,
@@ -263,6 +313,70 @@ evppi_by_subset <- function(psa_results, wtp_usd) {
     total_evpi = total_evpi, wtp_usd = wtp_usd,
     row.names = NULL
   )
+}
+
+# ---- pi prior-sensitivity analysis on EVPPI (resolutions memo §3.2) --------------------------
+
+#' Importance weights turning the existing pi ~ U(0,1) PSA draws (R/06_psa.R, Decision 4's own
+#' recorded fallback) into a sample representative of a DIFFERENT prior `dprior` (a density
+#' function taking a vector of pi values, e.g. `function(pi) stats::dbeta(pi, 1, 3)`), by the
+#' standard importance-sampling identity w_k ~ f_new(pi_k) / f_unif(pi_k). f_unif(pi_k) = 1
+#' everywhere on [0, 1] (the Uniform density), so the ratio collapses to just f_new(pi_k) itself
+#' -- renormalised here to mean 1 so the result can be passed straight into evpi_from_nb()'s or
+#' evppi_gam()'s `weights` argument without the caller having to rescale anything else downstream.
+#' This is `docs/treg-cd_decision_resolutions_2026-08-05.md` §3.2's whole point: "this is cheap.
+#' It requires no re-simulation" -- the SAME 10,000 draws R/06_psa.R already produced are reused,
+#' just re-weighted, to approximate what EVPPI would have looked like under a prior the PSA never
+#' actually sampled from.
+prior_reweight <- function(pi_values, dprior) {
+  w <- dprior(pi_values)
+  stopifnot(all(is.finite(w)), all(w >= 0), any(w > 0))
+  w / mean(w)
+}
+
+#' The three priors for pi analysis_plan.md's own uniform-prior fallback (Decision 4) needs
+#' checked against, per the resolutions memo §3.2: U(0,1) maximises prior variance on pi, so pi
+#' coming out as the dominant EVPPI parameter "more or less by construction" under it is exactly
+#' the artefact a competent reviewer would flag -- Beta(1,3) (mass toward LOW cure fractions,
+#' consistent with the Ovasave/CATS1 experience of a cure that mostly doesn't take) and Beta(2,2)
+#' (symmetric, informative, still centred on 0.5) are the memo's own named alternatives. U(0,1)'s
+#' entry is included as the reference case (weight 1 for every draw, i.e. no reweighting at all)
+#' so evppi_prior_sensitivity() below can report all three on one consistent table without a
+#' separate unweighted code path.
+PI_PRIOR_SENSITIVITY_SPECS <- list(
+  `U(0,1) [reference]` = function(pi) stats::dunif(pi, 0, 1),
+  `Beta(1,3)` = function(pi) stats::dbeta(pi, 1, 3),
+  `Beta(2,2)` = function(pi) stats::dbeta(pi, 2, 2)
+)
+
+#' evppi_by_subset() re-estimated once per prior in `prior_specs` (default:
+#' PI_PRIOR_SENSITIVITY_SPECS), via prior_reweight()'s importance weights on the SAME PSA draws --
+#' no new simulation. Returns one evppi_by_subset() table per prior, row-bound with a `prior`
+#' column, plus `rank_within_prior` (1 = highest EVPPI, computed separately within each prior) so
+#' the memo's own stated finding is directly readable off the table: "report the RANKING of EVPPI
+#' by parameter subset as the finding, and the LEVEL as prior-dependent" (§3.2) -- a stable rank
+#' across all three `prior` groups alongside a shifting `evppi` column IS that finding; this
+#' function computes the ingredients, the manuscript states the conclusion.
+evppi_prior_sensitivity <- function(psa_results, wtp_usd, prior_specs = PI_PRIOR_SENSITIVITY_SPECS) {
+  treg <- psa_results[psa_results$intervention == "TREG", ]
+  treg <- treg[order(treg$draw), ]
+  pi_values <- treg$pi_sdr
+
+  rows <- lapply(names(prior_specs), function(prior_name) {
+    w <- prior_reweight(pi_values, prior_specs[[prior_name]])
+    res <- evppi_by_subset(psa_results, wtp_usd, weights = w)
+    res$prior <- prior_name
+    res
+  })
+  combined <- do.call(rbind, rows)
+  # ties.method = "min": GAM-estimation noise can put two subsets' EVPPI within floating-point
+  # distance of each other (observed directly among small-effect subsets), where the default
+  # tie-averaging rank() would return non-integer ranks like 4.5 -- "min" gives both tied subsets
+  # the better (lower, i.e. more favourable) integer rank instead, which is what "rank 1 = highest
+  # EVPPI" should mean for a genuine (if close) tie.
+  combined$rank_within_prior <- stats::ave(-combined$evppi, combined$prior,
+                                            FUN = function(x) rank(x, ties.method = "min"))
+  combined
 }
 
 # ---- Convergence check across draw counts (analysis_plan.md sec 9.3's explicit requirement) -----

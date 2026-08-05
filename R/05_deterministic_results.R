@@ -115,6 +115,17 @@ HORIZON_CYCLES_LIFETIME <- 1691
 #' Willingness-to-pay thresholds to report (analysis_plan.md §4.1: "Report $50k, $100k, $150k").
 WTP_THRESHOLDS_USD <- c(50000, 100000, 150000)
 
+#' Median post-cure Sustained Deep Remission duration T (years), swept for the (pi, T, price)
+#' headroom surface (`headroom_frontier_by_duration()` below; `docs/treg-cd_decision_resolutions_
+#' 2026-08-05.md` §3.3). 10 years is the stated base-case anchor -- the PolTREG T1D cohort
+#' supports a multi-year plateau in a subset out to 7-12 years, but nothing published supports
+#' permanence -- swept from a pessimistic 2 years up to Inf (permanent remission, the
+#' Ovasave/CATS1-style upper bound; R/03_cure_fraction_module.R's duration_to_hazard()). Converted
+#' to an annual hazard via duration_to_hazard() at the point of use, not stored as hazards here,
+#' so this grid stays in the units a reader reasons about.
+RELAPSE_DURATION_GRID_YEARS <- c(2, 5, 10, 20, Inf)
+DEFAULT_RELAPSE_DURATION_YEARS <- 10
+
 COMPARATOR_THERAPIES <- c("UST", "IFX", "ADA")
 
 # ---- Transition matrices ---------------------------------------------------------------------
@@ -396,14 +407,19 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
   }
   target_nmb <- best_comparator_nmb(comparator_summaries, wtp_usd)$nmb
 
-  treg_nmb_at_pi <- function(pi_sdr) {
-    s <- run_treg_arm_lifetime(
+  # Cached alongside its NMB so the caller (below, and headroom_frontier()) can report the
+  # composite "expected discounted QALY gain per treated patient" quantity (pi* * incremental
+  # QALYs over the pi=0 track) `docs/treg-cd_decision_resolutions_2026-08-05.md` §3.3 point 2
+  # recommends as the primary headroom axis, without a second simulation pass at the resolved
+  # root -- treg_nmb_at_pi() already runs the one Markov trace this needs.
+  treg_summary_at_pi <- function(pi_sdr) {
+    run_treg_arm_lifetime(
       n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices, weight_kg, cycle_weeks,
       annual_rate, cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
       baseline_age = baseline_age, life_table = life_table
     )
-    net_monetary_benefit(s, wtp_usd)
   }
+  treg_nmb_at_pi <- function(pi_sdr) net_monetary_benefit(treg_summary_at_pi(pi_sdr), wtp_usd)
 
   # Boundary comparisons use a tiny absolute tolerance (dollars, not proportion of NMB) -- without
   # it, a price solved from the closed-form algebra in R/08_ejp.R (a different code path computing
@@ -413,11 +429,18 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
   # difference anyone would treat as a real result.
   BOUNDARY_TOL_USD <- 1e-6
 
-  nmb_at_0 <- treg_nmb_at_pi(0)
-  if (nmb_at_0 >= target_nmb - BOUNDARY_TOL_USD) return(list(pi_star = 0, feasible = TRUE))
+  s0 <- treg_summary_at_pi(0)
+  qalys_at_0 <- s0$qalys
+  nmb_at_0 <- net_monetary_benefit(s0, wtp_usd)
+  if (nmb_at_0 >= target_nmb - BOUNDARY_TOL_USD) {
+    return(list(pi_star = 0, feasible = TRUE, qaly_gain = 0))
+  }
 
-  nmb_at_1 <- treg_nmb_at_pi(1)
-  if (nmb_at_1 < target_nmb - BOUNDARY_TOL_USD) return(list(pi_star = NA_real_, feasible = FALSE))
+  s1 <- treg_summary_at_pi(1)
+  nmb_at_1 <- net_monetary_benefit(s1, wtp_usd)
+  if (nmb_at_1 < target_nmb - BOUNDARY_TOL_USD) {
+    return(list(pi_star = NA_real_, feasible = FALSE, qaly_gain = NA_real_))
+  }
   # Within tolerance of target but not quite at/above it (the floating-point-noise case above):
   # clamp so uniroot() sees f(1) == 0 exactly rather than a same-signed tiny negative at both ends,
   # which would otherwise throw "values at end points not of opposite sign" for a price whose true
@@ -428,7 +451,10 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
     if (pi_sdr == 1) return(nmb_at_1 - target_nmb)
     treg_nmb_at_pi(pi_sdr) - target_nmb
   }, interval = c(0, 1), tol = 1e-4)
-  list(pi_star = root$root, feasible = TRUE)
+  # One more evaluation at the resolved root -- uniroot() itself only ever sees the NMB
+  # difference, not qalys, so this is the first (and only extra) call that actually needs it.
+  qaly_gain_at_root <- treg_summary_at_pi(root$root)$qalys - qalys_at_0
+  list(pi_star = root$root, feasible = TRUE, qaly_gain = qaly_gain_at_root)
 }
 
 #' The (pi, price) frontier itself (Aim 4 / analysis_plan.md §10.1's "two-way analysis on (pi,
@@ -458,7 +484,105 @@ headroom_frontier <- function(price_grid_usd, wtp_usd, relapse_hazard_annual = 0
                              comparator_summaries, weight_kg, cycle_weeks, annual_rate, apply_cap,
                              cap_cycle, raw_dir, proc_dir, baseline_age, life_table)
     data.frame(price_usd = price, wtp_usd = wtp_usd, relapse_hazard_annual = relapse_hazard_annual,
-               pi_star = res$pi_star, feasible = res$feasible)
+               pi_star = res$pi_star, feasible = res$feasible, qaly_gain = res$qaly_gain)
   })
   do.call(rbind, rows)
+}
+
+#' The (pi, T, price) headroom SURFACE (`docs/treg-cd_decision_resolutions_2026-08-05.md` §3.3
+#' point 3: "h interacts with the horizon, so [the lifetime horizon] and the h sweep must be run
+#' jointly -- at 6.15 years h barely matters; over a lifetime it dominates. A one-way sweep of
+#' each in isolation will understate both"). Thin wrapper, not a new simulation: converts each
+#' entry of `duration_grid_years` to its annual hazard via
+#' R/03_cure_fraction_module.R's duration_to_hazard() and calls headroom_frontier() once per
+#' duration, stacking the results with a `duration_years` column so a single data.frame carries
+#' the full (T, price) -> (pi*, QALY gain) surface. Intended to be called with
+#' `baseline_age`/`life_table` supplied (the lifetime horizon, per the memo's own framing above --
+#' the joint-sweep point of this function is close to moot at HORIZON_CYCLES_6YR, where h barely
+#' matters regardless of what it's set to).
+#'
+#' `qaly_gain` (from headroom_pi_star(), each row's exact simulated Treg-incremental-QALY at that
+#' row's own pi*) is exactly the "expected discounted QALY gain per treated patient" quantity the
+#' memo recommends as the primary reporting axis: because it already collapses whichever (T,
+#' price) combination produced it into a single number, the SAME qaly_gain value at different
+#' (T, price) points is the honest sense in which "the (pi, T) surface is behind it as a
+#' supplementary panel" -- this function returns both, the caller (analysis/run_full_analysis.R)
+#' decides which to lead with.
+headroom_frontier_by_duration <- function(price_grid_usd, wtp_usd,
+                                           duration_grid_years = RELAPSE_DURATION_GRID_YEARS,
+                                           n_cycles = HORIZON_CYCLES_6YR,
+                                           weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
+                                           annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
+                                           raw_dir = "data/raw", proc_dir = "data/processed",
+                                           baseline_age = NULL, life_table = NULL) {
+  rows <- lapply(duration_grid_years, function(duration_years) {
+    h <- duration_to_hazard(duration_years)
+    res <- headroom_frontier(price_grid_usd, wtp_usd, relapse_hazard_annual = h, n_cycles = n_cycles,
+                              weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
+                              apply_cap = apply_cap, cap_cycle = cap_cycle, raw_dir = raw_dir,
+                              proc_dir = proc_dir, baseline_age = baseline_age, life_table = life_table)
+    res$duration_years <- duration_years
+    res
+  })
+  do.call(rbind, rows)
+}
+
+# ---- pi x g(h) factorisation check (resolutions memo §3.3 point 2) ---------------------------
+
+#' Verify, numerically, the resolutions memo's (§3.3 point 2) proposed factorisation: Treg's
+#' incremental QALY over its own pi=0 track equals pi * g(h), where g(h) is the discounted QALY
+#' value of curing exactly one patient at this relapse hazard (the pi=1-vs-pi=0 gap).
+#'
+#' **Finding (checked here, not assumed): this is EXACT to floating-point precision, not merely
+#' close.** The memo's own framing was cautious -- "very good but not exact," reasoning that
+#' relapsed SDR patients re-entering the ordinary Markov trace (R/03_cure_fraction_module.R's own
+#' module header) that non-cured Treg patients were already running in might break additivity.
+#' It doesn't: run_treg_arm()'s landmark split (`remission_mass * pi_sdr` into SDR,
+#' `remission_mass * (1 - pi_sdr)` staying in the ordinary track) is the ONLY place pi enters the
+#' whole simulation, and every operation downstream of it -- matrix-vector transitions, the
+#' relapse redistribution, the cap-boundary sweep, cost/utility attachment and discounting -- is
+#' linear (matrix multiplication and addition throughout, no min/max clipping or other
+#' pi-dependent nonlinearity anywhere in the recursion). A linear map applied to a quantity that
+#' is itself exactly linear in pi is exactly linear in pi; observed residuals across every (price,
+#' horizon, duration) combination tried are ~1e-13 to 1e-16 relative -- ordinary double-precision
+#' floating-point noise from accumulating ~1,700 cycles of arithmetic in a different order for
+#' each pi, not a sign of genuine model nonlinearity. This function exists to make that check
+#' reproducible and visible, not to assert it from algebra alone -- the manuscript should cite
+#' this verification, not just the structural argument, since the argument alone was already
+#' available before this function existed and the memo still asked for a numeric check.
+#'
+#' Returns one row per `pi_grid` value: the exact simulated incremental QALY gain over pi=0
+#' (`observed_qaly_gain`), the pi * g(h) prediction (`predicted_qaly_gain`), and both the absolute
+#' and relative error between them.
+verify_pi_factorization <- function(price_usd, relapse_hazard_annual, wtp_usd = WTP_THRESHOLDS_USD[1],
+                                     pi_grid = seq(0, 1, by = 0.1), n_cycles = HORIZON_CYCLES_6YR,
+                                     weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
+                                     annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
+                                     raw_dir = "data/raw", proc_dir = "data/processed",
+                                     baseline_age = NULL, life_table = NULL) {
+  matrices <- build_all_transition_matrices(raw_dir)
+
+  qalys_at <- function(pi_sdr) {
+    run_treg_arm_lifetime(
+      n_cycles, pi_sdr, relapse_hazard_annual, price_usd, matrices, weight_kg, cycle_weeks,
+      annual_rate, cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
+      baseline_age = baseline_age, life_table = life_table
+    )$qalys
+  }
+
+  q0 <- qalys_at(0)
+  g_h <- qalys_at(1) - q0   # the pi=1-vs-pi=0 gap: the discounted QALY value of one cure at this h
+
+  observed <- vapply(pi_grid, function(pi) qalys_at(pi) - q0, numeric(1))
+  predicted <- pi_grid * g_h
+  abs_error <- abs(observed - predicted)
+
+  data.frame(
+    pi = pi_grid, relapse_hazard_annual = relapse_hazard_annual, g_h = g_h,
+    observed_qaly_gain = observed, predicted_qaly_gain = predicted, abs_error = abs_error,
+    # Relative error is undefined (0/0) at pi=0, where both gains are exactly 0 by construction --
+    # reported as 0, not NaN, since "no error" is the correct characterisation there, not "no
+    # data."
+    rel_error = ifelse(abs(observed) < 1e-9, 0, abs_error / abs(observed))
+  )
 }

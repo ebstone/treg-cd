@@ -204,3 +204,84 @@ test_that("headroom_frontier's baseline_age argument is actually threaded throug
                                 baseline_age = ASSUMED_PATIENT_AGE_YEARS, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
   expect_false(isTRUE(all.equal(short$pi_star, lifetime$pi_star)) && short$feasible == lifetime$feasible)
 })
+
+# ---- h sweep (relapse duration T) and the pi * g(h) factorisation check (2026-08-05) -----------
+
+test_that("headroom_pi_star's qaly_gain is 0 exactly at pi_star = 0, NA when infeasible, and positive at an interior root", {
+  cheap <- headroom_pi_star(price_usd = 1, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_equal(cheap$pi_star, 0)
+  expect_equal(cheap$qaly_gain, 0)
+
+  absurd <- headroom_pi_star(price_usd = 10000000, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_false(absurd$feasible)
+  expect_true(is.na(absurd$qaly_gain))
+
+  interior <- headroom_pi_star(price_usd = 5000, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_true(interior$feasible)
+  expect_true(interior$pi_star > 0 && interior$pi_star < 1)
+  expect_true(interior$qaly_gain > 0)
+})
+
+test_that("a shorter median SDR duration T (higher relapse hazard) requires a higher pi* for the same price -- the h-sweep sanity check", {
+  # price = 3000, not 7000: at the 6.15-year horizon a pessimistic T = 2 relapse duration already
+  # pushes 7000 out of the feasible region entirely (correctly -- a price this horizon can barely
+  # justify even with a durable cure has no headroom left once relapse erodes that durability
+  # too), which would make this an infeasible-vs-infeasible comparison rather than the interior
+  # comparison this test is about. 3000 keeps both durations in the interior-root regime.
+  price <- 3000
+  optimistic <- headroom_pi_star(price, wtp_usd = 150000, relapse_hazard_annual = duration_to_hazard(20),
+                                  raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  pessimistic <- headroom_pi_star(price, wtp_usd = 150000, relapse_hazard_annual = duration_to_hazard(2),
+                                   raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_true(optimistic$feasible && pessimistic$feasible)
+  expect_true(pessimistic$pi_star > optimistic$pi_star)
+})
+
+test_that("headroom_frontier_by_duration stacks one full headroom_frontier() per duration, each tagged correctly", {
+  price_grid <- c(1000, 5000, 10000)
+  duration_grid <- c(5, 10, Inf)
+  surf <- headroom_frontier_by_duration(price_grid, wtp_usd = 150000, duration_grid_years = duration_grid,
+                                         raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+
+  expect_equal(nrow(surf), length(price_grid) * length(duration_grid))
+  expect_setequal(surf$duration_years, duration_grid)
+  # T = Inf (permanent remission, h = 0) should reproduce headroom_frontier()'s own h = 0 default
+  # exactly -- same underlying computation, just reached through duration_to_hazard(Inf) = 0.
+  direct <- headroom_frontier(price_grid, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  from_surface <- surf[surf$duration_years == Inf, ]
+  expect_equal(from_surface$pi_star[order(from_surface$price_usd)], direct$pi_star[order(direct$price_usd)])
+
+  # A shorter duration (higher hazard) can never make headroom EASIER to reach at the same price --
+  # pi* should be non-decreasing as duration shortens, mirroring the single-duration sanity check.
+  feasible <- surf[surf$feasible, ]
+  by_price <- split(feasible, feasible$price_usd)
+  for (rows in by_price) {
+    ord <- order(rows$duration_years)  # ascending duration = descending hazard
+    expect_true(all(diff(rows$pi_star[ord]) <= 1e-8))
+  }
+})
+
+test_that("verify_pi_factorization: pi * g(h) is exact to floating-point precision, not merely close -- the finding this function's docstring reports", {
+  # The resolutions memo hedged this as "very good but not exact." It's checked here to actually
+  # be exact (run_treg_arm()'s pi-split feeds into a purely linear recursion -- R/05's own
+  # docstring on verify_pi_factorization() spells out why) -- residuals should be ordinary
+  # floating-point noise (~1e-10 relative or smaller), not a genuine few-percent approximation
+  # gap. Checked at both a mid-range price and both the 6.15-year and lifetime horizons, since the
+  # linearity argument doesn't depend on either.
+  for (n_cycles_arg in list(list(n_cycles = HORIZON_CYCLES_6YR, baseline_age = NULL),
+                            list(n_cycles = HORIZON_CYCLES_LIFETIME, baseline_age = ASSUMED_PATIENT_AGE_YEARS))) {
+    res <- do.call(verify_pi_factorization, c(
+      list(price_usd = 15000, relapse_hazard_annual = duration_to_hazard(10),
+           pi_grid = seq(0, 1, by = 0.25), raw_dir = RAW_DIR, proc_dir = PROC_DIR),
+      n_cycles_arg
+    ))
+    expect_equal(nrow(res), 5)
+    # Exact by construction at the endpoints: g(h) is defined as the pi=1-vs-pi=0 gap itself.
+    expect_equal(res$observed_qaly_gain[res$pi == 0], 0)
+    expect_equal(res$predicted_qaly_gain[res$pi == 0], 0)
+    expect_equal(res$observed_qaly_gain[res$pi == 1], res$predicted_qaly_gain[res$pi == 1], tolerance = 1e-9)
+    # Interior points: floating-point-scale residuals, not a genuine approximation gap.
+    expect_true(all(res$rel_error < 1e-8))
+    expect_true(all(is.finite(res$abs_error)))
+  }
+})

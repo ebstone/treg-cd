@@ -212,6 +212,59 @@ unbenchmarked performance question, deliberately deferred. `analysis/run_full_an
 "6/6: Lifetime horizon" section now runs this end to end. Full test suite: 385 assertions,
 0 failures.
 
+**h sweep + π prior-sensitivity on EVPPI implemented (2026-08-05)**, closing the resolutions
+memo's own priority-order item 3 (`docs/treg-cd_decision_resolutions_2026-08-05.md` §3.2/§3.3),
+immediately after the lifetime-horizon work above. Two independent additions:
+
+- **h sweep.** The memo flagged the prior hardcoded `relapse_hazard_annual = 0` default as
+  *anti*-conservative, not conservative — zero relapse is the single most favourable assumption
+  available to Treg, not a cautious one. `R/03_cure_fraction_module.R`'s new
+  `duration_to_hazard()`/`hazard_to_duration()` re-parameterise the relapse hazard by its implied
+  median Sustained Deep Remission duration T (h = ln 2 / T) — "a median 10 years of drug-free
+  remission" is a quantity a clinician or reviewer can reason about directly, a bare hazard rate
+  is not. `R/05_deterministic_results.R`'s new `RELAPSE_DURATION_GRID_YEARS` (2, 5, 10, 20, Inf
+  years; base case T = 10) and `headroom_frontier_by_duration()` sweep this jointly with price at
+  the **lifetime** horizon (the memo: "h interacts with the horizon... must be run jointly — at
+  6.15 years h barely matters; over a lifetime it dominates"), stacking one full
+  `headroom_frontier()` per duration into a single (π, T, price) surface with an exact,
+  per-row-simulated `qaly_gain` column (the "expected discounted QALY gain per treated patient"
+  the memo recommends as the primary reporting axis, computed directly rather than only via the
+  π·g(h) approximation below). No existing function's default behaviour changed — every prior call
+  site with `relapse_hazard_annual` left implicit still gets 0, unchanged; T-based sweeping is
+  additive.
+- **π·g(h) factorisation, verified exact.** The memo asked for a numeric check that Treg's
+  incremental QALY over its π=0 track is *approximately* π × g(h) (g(h) = the discounted QALY
+  value of one cure), hedging it as "very good but not exact" since relapsed SDR patients re-enter
+  the ordinary Markov trace. `R/05_deterministic_results.R`'s new `verify_pi_factorization()`
+  checked this directly: **the factorisation is exact to floating-point precision (~1e-13 relative
+  error, ordinary numerical noise) at every price and both horizons tried, not merely close** —
+  because π enters `run_treg_arm()` exactly once, at the landmark split, and every operation
+  downstream (transitions, relapse redistribution, the cap sweep, cost/utility attachment) is
+  linear, with no π-dependent nonlinearity anywhere in the recursion. A stronger, more useful
+  finding than the memo anticipated, now documented with a reproducible check rather than asserted
+  from the structural argument alone.
+- **π prior-sensitivity on EVPPI.** U(0,1) (Decision 4's own fallback prior for π) maximises prior
+  variance on π, which the memo warns makes π come out as the dominant EVPPI parameter "more or
+  less by construction" — an artefact a competent reviewer would flag unless checked against
+  alternative priors. `R/07_evpi_evppi.R`'s new `prior_reweight()` computes importance weights
+  turning the *same* 10,000-draw PSA already on file into a sample representative of Beta(1,3)
+  (mass toward low cure fractions, consistent with the Ovasave/CATS1 experience) or Beta(2,2)
+  (symmetric, informative) — no re-simulation, exactly the memo's own "this is cheap" framing.
+  `evpi_from_nb()` and `evppi_gam()` both gained an optional `weights` argument (`NULL` default:
+  byte-identical to their pre-existing unweighted behaviour); `evppi_by_subset()` threads a
+  `weights` argument through consistently to both the total-EVPI denominator and every subset's
+  EVPPI numerator; `evppi_prior_sensitivity()` runs all three priors (U(0,1) reference, Beta(1,3),
+  Beta(2,2)) and reports a `rank_within_prior` column so the memo's stated finding — "the RANKING
+  of EVPPI by parameter subset is the finding, the LEVEL is prior-dependent" — is directly readable
+  off the returned table rather than requiring a second pass.
+
+`analysis/run_full_analysis.R` gained two new sections (7/8, 8/8) wiring both pieces in: the
+(π, T, price) headroom surface at the lifetime horizon plus the factorisation check
+(`output/tables/headroom_frontier_by_duration_lifetime.csv`,
+`output/tables/pi_factorization_check.csv`), and the prior-sensitivity EVPPI table
+(`output/tables/evppi_prior_sensitivity.csv`) computed from the PSA draws already produced in
+section 3/8 — no new PSA run. Full test suite: 461 assertions, 0 failures.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,

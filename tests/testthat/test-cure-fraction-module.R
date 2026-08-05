@@ -19,6 +19,29 @@ test_that("hazard_to_cycle_probability matches a closed-form check", {
   expect_equal(hazard_to_cycle_probability(0.1, cycle_weeks = 8), 1 - exp(-0.1 * 8 / 52), tolerance = 1e-12)
 })
 
+test_that("duration_to_hazard matches the closed-form h = ln(2)/T, and T = Inf gives h = 0 exactly", {
+  expect_equal(duration_to_hazard(10), log(2) / 10)
+  expect_equal(duration_to_hazard(1), log(2))
+  expect_equal(duration_to_hazard(Inf), 0)
+  expect_error(duration_to_hazard(0))
+  expect_error(duration_to_hazard(-5))
+})
+
+test_that("hazard_to_duration is duration_to_hazard's exact inverse, and h = 0 gives T = Inf", {
+  for (T in c(2, 5, 10, 20)) {
+    expect_equal(hazard_to_duration(duration_to_hazard(T)), T, tolerance = 1e-10)
+  }
+  expect_equal(hazard_to_duration(0), Inf)
+  expect_error(hazard_to_duration(-0.01))
+})
+
+test_that("duration_to_hazard is a genuine unit conversion: S(T) = exp(-h*T) = 0.5 at the median", {
+  for (T in c(2, 5, 10, 20)) {
+    h <- duration_to_hazard(T)
+    expect_equal(exp(-h * T), 0.5, tolerance = 1e-10)
+  }
+})
+
 test_that("pi_sdr = 0 exactly reproduces run_maintenance_arm()'s plain output -- the null case falls out for free", {
   states <- MAINTENANCE_STATES
   # Small synthetic matrices are enough here -- this test is about the null case being a genuine

@@ -34,6 +34,44 @@ hazard_to_cycle_probability <- function(annual_rate, cycle_weeks = 2) {
   1 - exp(-annual_rate * cycle_weeks / 52)
 }
 
+#' Convert a median duration of Sustained Deep Remission T (years) into the constant annual
+#' relapse hazard `hazard_to_cycle_probability()` (and everything downstream of it) actually
+#' consumes, via h = ln(2)/T -- the standard median-to-rate conversion for a constant-hazard
+#' (exponential) survival model, S(T) = exp(-h*T) = 0.5.
+#'
+#' Added per `docs/treg-cd_decision_resolutions_2026-08-05.md` §3.3: the briefing this project
+#' worked from described the module's prior `h = 0` default as "conservative, no relapse" --
+#' backwards. Zero relapse hazard is the single MOST favourable assumption available to the
+#' intervention (it maximises time spent in SDR, which is never worse, cost- or utility-wise,
+#' than the ongoing non-cured track it replaces -- headroom_pi_star()'s own docstring,
+#' R/05_deterministic_results.R), so shipping it silently as "the conservative choice" would have
+#' been a correctable error a reviewer would find. T is the quantity actually surfaced to readers
+#' and swept across a grid (R/05_deterministic_results.R's RELAPSE_DURATION_GRID_YEARS) --
+#' "a median 10 years of drug-free remission" is something a clinician or reviewer can reason
+#' about directly; a bare hazard rate of 0.0693/year is not -- while h remains the only quantity
+#' any Markov step in this file actually needs.
+#'
+#' `T = Inf` (permanent remission, h = 0) is an explicit edge case, not something the algebra
+#' handles for free: `log(2) / Inf` evaluates to `0` in R's own IEEE arithmetic (not NaN, as the
+#' analogous 0/Inf pattern might suggest), so this branch is defensive documentation of that fact,
+#' not strictly required for correctness -- kept explicit so the T=Inf case reads as a deliberate
+#' modelling point (the Ovasave/CATS1-style "cure never wanes" upper bound), not as a numeric
+#' coincidence.
+duration_to_hazard <- function(median_duration_years) {
+  stopifnot(median_duration_years > 0)
+  if (is.infinite(median_duration_years)) return(0)
+  log(2) / median_duration_years
+}
+
+#' Inverse of duration_to_hazard() -- annual hazard back to its implied median SDR duration in
+#' years, for reporting a fitted or swept hazard value back in the units a reader can reason
+#' about. h = 0 (permanent remission) maps to T = Inf, not an error or an undefined division.
+hazard_to_duration <- function(annual_hazard) {
+  stopifnot(annual_hazard >= 0)
+  if (annual_hazard == 0) return(Inf)
+  log(2) / annual_hazard
+}
+
 #' Simulate the Treg arm: UST-equivalent up to the week-56 landmark, then split into a cured
 #' (SDR) track and a continuing non-cured track that behaves exactly like run_maintenance_arm()
 #' would from there (same switch/cap mechanic, reused via step_maintenance_cycle() rather than
