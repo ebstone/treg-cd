@@ -57,6 +57,30 @@ matrix_power <- function(m, n) {
   result
 }
 
+#' Convert a single cumulative event probability from one cycle length to another under the
+#' constant-hazard (exponential-survival) assumption -- the same DEALE-style conversion Aliyev's
+#' own Appendix S2 worked example uses (`R/00_derive_transition_probs.R`'s module header: UST
+#' week-6 remission 0.349 -> rate = -ln(1-0.349)/(6/52) -> 2-week probability
+#' 1-exp(-rate*2/52) = 0.133), generalised here to an arbitrary FROM/TO cycle length rather than
+#' hardcoded to a 2-week target. `p_new = 1 - (1-p_old)^(weeks_new/weeks_old)` is algebraically the
+#' same two-step (probability -> rate -> probability) computation collapsed into one line, without
+#' the intermediate rate ever needing to be materialised (and without an intermediate rounding
+#' step a two-line version would introduce).
+#'
+#' This is a single-event conversion, not a full matrix operation: it's only exact when `p_old` is
+#' the probability of ONE event (e.g. "leaves state X by any route"), not when applied
+#' independently to several competing destination probabilities from the same row (which would
+#' need a proper competing-risks or matrix-fractional-power treatment this project has no existing
+#' utility for -- `matrix_power()` above only does forward INTEGER powers). Used by
+#' `R/utils/surgery_row_sensitivity.R` (the R2 sensitivity check, `docs/model_audit_v6.md` A17's
+#' own follow-up note) exactly this way: converts the aggregate "leaves Surgery" probability, then
+#' re-splits the converted mass across destinations in their ORIGINAL relative proportions, rather
+#' than converting each destination independently.
+convert_cycle_length_probability <- function(p_old, weeks_old, weeks_new) {
+  stopifnot(p_old >= 0, p_old <= 1, weeks_old > 0, weeks_new > 0)
+  1 - (1 - p_old) ^ (weeks_new / weeks_old)
+}
+
 #' Replace every non-Death row's Death-column probability with `death_prob`, uniformly (the "no
 #' CD excess mortality" assumption, analysis_plan.md §7.1 item 7 -- background mortality applies
 #' identically regardless of current CD health state, so one scalar per cycle is the right

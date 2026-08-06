@@ -47,7 +47,11 @@ day. Still wired in as an explicit opt-in `treg_dose_cost(observation_stay_cost_
 argument (default 0) rather than a base-case value — not because the price is uncertain, but
 because whether a Treg infusion actually qualifies for this billing category (≥8 hours of
 observation) is a separate, still-open clinical/modelling question. Single-dose base case only (analysis_plan.md §4.1) —
-the 2-dose structural scenario needs per-cycle-trace logic not implemented here. A genuine,
+the 2-dose structural scenario needs per-cycle-trace logic not implemented here **[as of this
+2026-08-04 entry only — S6, the 2-dose scenario this sentence describes as merely "not
+implemented," was later formally DROPPED, not deferred, 2026-08-05 (see this section's own S6
+entry further down): single-dose is now the only Treg dosing this project models at all, not a
+base case with a pending scenario alternative]**. A genuine,
 previously-unflagged workbook inconsistency (A15, `docs/model_audit_v6.md`) was found and
 documented, not silently resolved, while wiring the acquisition cost in.
 
@@ -515,11 +519,53 @@ pre-B1-fix figures quoted earlier in this section:
   $1,359/patient (89% of total EVPI); subsets C (Treg price) and E (utilities) are ≈0, consistent
   with earlier pre-B1-fix findings that price/utility uncertainty contribute essentially nothing
   once π is known. Aim 3's durability-vs-cost-block comparison (subset B, relapse hazard) is
-  still not answerable — B3 (sample h in the PSA) remains open, out of scope for this pass by
-  Eric's own direction.
+  still not answerable at time of this run — B3 (sample h in the PSA) was picked up the same day,
+  see below.
 - 18 tables written to `output/tables/` (15 primary lifetime-horizon outputs + 3 comparability-
   scenario outputs — S5 horizon, S3 refractory). Full list printed at the end of the script's own
   log output.
+
+**R2 sensitivity check landed (2026-08-06), same day, while B3 was being worked in parallel —
+`docs/model_audit_v6.md` A18.** Peer review 2026-08-05 flagged that Aliyev's Surgery-state
+transitions have two irreconcilable published sources: the 8-week `aliyev2019_appendixS1_table2_
+parameters.csv` figures (self-loop 0.34, dormant, never wired into any matrix) vs. the 2-week
+`aliyev2019_appendixS2_table4_...csv` row (self-loop 0.0976, 86.8% one-step return to Remission —
+what every arm actually runs on) — and that S12's own counterintuitive finding (strengthening the
+non-cured hazard-ratio advantage very slightly *lowers* QALYs) traces specifically to Table 4's
+unusually fast Surgery-to-Remission dynamics, so the finding is only as trustworthy as that one
+source. New `R/utils/surgery_row_sensitivity.R` reconstructs a native-2-week-equivalent Surgery
+row from Table 2's 8-week figures (via the same constant-hazard cycle-length conversion Aliyev's
+own Appendix S2 worked example uses, applied to the aggregate "leaves Surgery" probability, then
+re-split across destinations in their original proportions — not a full matrix fractional-power
+conversion, which this project has no existing utility for), with three assumptions stated
+explicitly to fill gaps in Table 2's own incomplete extract (residual mass → Remission, matching
+Table 4's own pattern; the combined Mild/M-SR figure split evenly; Surgery→Death set to 0, since
+none is sourced at any cycle length). New `run_scenario_r2_surgery_sensitivity()` (R/09_scenarios.R,
+wired into `analysis/run_scenario_analyses.R` right after S12) re-runs S12's own HR grid against
+this alternative Surgery row alongside the real one. **Finding: the QALY-direction sign flips.**
+Under Table 4 (sourced, real), QALYs fall very slightly as the advantage strengthens (S12's
+original finding, unchanged). Under Table 2's much stickier reconstructed row, QALYs instead
+*rise* — the intuitively-expected direction. NMB rises under either source regardless (Surgery
+stays expensive to enter either way), so the NMB/decision conclusion is robust; the QALY-direction
+sub-claim specifically is now reported as source-dependent, not settled, in
+`docs/analysis_plan.md` §6.2/§10.4 and `docs/model_audit_v6.md` A18.
+`output/tables/scenario_r2_surgery_sensitivity.csv`; new `tests/testthat/test-surgery-row-
+sensitivity.R` (26 assertions) plus 5 new `convert_cycle_length_probability()` assertions in
+`test-transition-matrix.R`. Full test suite green.
+
+**Documentation cleanup landed the same day (R1, peer review 2026-08-05).** `docs/analysis_plan.md`
+had drifted out of sync with what's actually implemented in several places — the manuscript-facing
+abstract and the §4.1 design-decision table both still said "8-week cycles" (this project has run
+Aliyev's native 2-week cycle since 2026-08-04); §4.3 and its own addendum still said PSA/EVPI/
+EVPPI/probabilistic EJP "still run at the 6.15-year horizon" (superseded by the B1-fix/horizon-
+focus change above); §6.1's "Model structure" overview and its ASCII diagram still described
+8-week induction/maintenance cycles as "the current design"; the §4.1 table's cap-cycle rationale
+still referenced "cycle 13" (the 8-week-cycle figure; the code's own `cap_cycle = 52` is the
+2-week-cycle equivalent); and the §4.1 table's Intervention row still read "second dose as
+scenario" as if S6 were a live pending scenario rather than formally dropped 2026-08-05. Also
+fixed in code comments themselves, not just docs: `R/04_costs_utilities.R`'s and `R/08_ejp.R`'s
+own 2026-08-04 comments on the 2-dose scenario read the same stale way. All corrected in place
+with dated notes, following this project's own convention, rather than silently rewritten.
 
 ## Repository structure
 

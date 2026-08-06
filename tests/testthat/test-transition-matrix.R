@@ -52,6 +52,39 @@ test_that("matrix_power correctly composes a two-state chain (hand-computable)",
   expect_equal(m2["B", "B"], 1, tolerance = 1e-9)
 })
 
+test_that("convert_cycle_length_probability is the identity when weeks_old == weeks_new", {
+  expect_equal(convert_cycle_length_probability(0.349, 6, 6), 0.349)
+  expect_equal(convert_cycle_length_probability(0, 8, 2), 0)
+  expect_equal(convert_cycle_length_probability(1, 8, 2), 1)
+})
+
+test_that("convert_cycle_length_probability reproduces Aliyev's own worked example (B1 fix, docs/model_audit_v6.md A17)", {
+  # Appendix S2's own worked example: UST week-6 remission 0.349 -> rate = -ln(1-0.349)/(6/52) ->
+  # 2-week probability 0.133 (the exact figure Table 3 publishes as its UST Moderate-Severe ->
+  # Remission entry). This is the same single-event conversion this function generalises to an
+  # arbitrary FROM/TO cycle length, so it must reproduce this specific case exactly.
+  expect_equal(convert_cycle_length_probability(0.349, weeks_old = 6, weeks_new = 2), 0.133,
+               tolerance = 5e-4)
+})
+
+test_that("convert_cycle_length_probability round-trips (converting out and back reproduces the original)", {
+  p <- 0.66
+  converted <- convert_cycle_length_probability(p, weeks_old = 8, weeks_new = 2)
+  back <- convert_cycle_length_probability(converted, weeks_old = 2, weeks_new = 8)
+  expect_equal(back, p, tolerance = 1e-9)
+})
+
+test_that("convert_cycle_length_probability: shrinking the cycle length shrinks the probability (a shorter window sees less of the same underlying rate)", {
+  p_8wk <- 0.66
+  p_2wk <- convert_cycle_length_probability(p_8wk, weeks_old = 8, weeks_new = 2)
+  expect_true(p_2wk < p_8wk)
+  # Independently re-derived via the two-step rate route this function collapses into one line,
+  # not calling the function under test -- a real cross-check, not a tautology.
+  rate <- -log(1 - p_8wk) / (8 / 52)
+  p_2wk_two_step <- 1 - exp(-rate * 2 / 52)
+  expect_equal(p_2wk, p_2wk_two_step, tolerance = 1e-12)
+})
+
 test_that("matrix_to_long round-trips through build_transition_matrix", {
   m <- matrix(c(0.3, 0.7, 0.1, 0.9), nrow = 2, byrow = TRUE, dimnames = list(c("A", "B"), c("A", "B")))
   long <- matrix_to_long(m, therapy = "TEST")

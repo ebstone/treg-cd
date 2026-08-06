@@ -72,6 +72,20 @@ s12 <- run_scenario_s12_non_cured_hr()
 print(s12, row.names = FALSE)
 write_table(s12, "scenario_s12_non_cured_hr.csv")
 
+# ---- R2: S12 re-run against a Table-2-derived Surgery row (sensitivity check, 2026-08-06) --------
+cat("\n=== R2: S12 sensitivity check -- Table-4-sourced vs. Table-2-derived Surgery row ===\n")
+# run_scenario_r2_surgery_sensitivity() (R/09_scenarios.R, R/utils/surgery_row_sensitivity.R) --
+# peer review 2026-08-05's R2 finding, docs/model_audit_v6.md A18. Re-runs S12's own hazard-ratio
+# grid above against a second, Table-2-derived Surgery row -- see that file's own header for the
+# full derivation and every assumption involved in reconstructing it from Aliyev's dormant,
+# 8-week Table 2 data. Finding: the QALY-direction sign FLIPS (rises under Table 2's stickier
+# Surgery dynamics vs. falls under Table 4's, the S12 result printed just above); NMB rises under
+# either source.
+r2 <- run_scenario_r2_surgery_sensitivity()
+print(r2[, c("surgery_source", "non_cured_hazard_ratio", "qalys", "total_cost", "qaly_direction")],
+      row.names = FALSE)
+write_table(r2, "scenario_r2_surgery_sensitivity.csv")
+
 # ---- S7: SDR utility = Remission vs. general-population -----------------------------------------
 cat("\n=== S7: SDR utility (Remission vs. general-population) ===\n")
 s7 <- run_scenario_s7_sdr_utility()

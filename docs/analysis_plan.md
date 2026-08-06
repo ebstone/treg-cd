@@ -61,7 +61,7 @@ Target 380–430 words. The journal specifies 150–250 words but explicitly per
 
 > **Background and Objective.** Allogeneic regulatory T-cell (Treg) therapies are in early clinical development for Crohn's disease on the premise of durable, potentially curative immune tolerance, but no efficacy data exist. We aimed to establish (i) the economically justifiable price (EJP) of such a therapy, (ii) the durable-remission ("cure") fraction it would need to achieve to be cost-effective at a given price, and (iii) where additional evidence would be most valuable, via expected value of perfect and partial perfect information (EVPI, EVPPI).
 >
-> **Methods.** We developed a hybrid decision-tree and cohort Markov model (8-week cycles; [lifetime] horizon; 3% annual discounting) comparing a hypothetical single-infusion allogeneic Treg therapy with ustekinumab, infliximab [and adalimumab] in [biologic-naïve] adults with moderate-to-severe Crohn's disease, from the US healthcare-sector perspective. Health states were Remission, Mild, Moderate-Severe, Moderate-Severe Responder, Surgery and Death, defined by Crohn's Disease Activity Index score. Biologic induction and maintenance transition probabilities were derived from Aliyev et al. (2019). The Treg arm was extended with a mixture-cure structure: a fraction of week-52 responders entered a Sustained Deep Remission state with a low annual relapse hazard; the remainder were assumed efficacy-equivalent to ustekinumab. Acquisition cost was derived from the ten Ham et al. (2020) manufacturing costing framework. Because no Treg efficacy data exist, the cure fraction and relapse hazard were treated as unknowns and varied across their full plausible range, anchored on three published analogs. Probabilistic analysis used [10,000] Monte Carlo draws; EVPPI was estimated by nonparametric regression.
+> **Methods.** We developed a hybrid decision-tree and cohort Markov model (2-week cycles; lifetime horizon, with 6.15-year and 10-year comparability scenarios; 3% annual discounting) comparing a hypothetical single-infusion allogeneic Treg therapy with ustekinumab, infliximab [and adalimumab] in [biologic-naïve] adults with moderate-to-severe Crohn's disease, from the US healthcare-sector perspective. Health states were Remission, Mild, Moderate-Severe, Moderate-Severe Responder, Surgery and Death, defined by Crohn's Disease Activity Index score. Biologic induction and maintenance transition probabilities were derived from Aliyev et al. (2019). The Treg arm was extended with a mixture-cure structure: a fraction of week-52 responders entered a Sustained Deep Remission state with a low annual relapse hazard; the remainder were assumed efficacy-equivalent to ustekinumab. Acquisition cost was derived from the ten Ham et al. (2020) manufacturing costing framework. Because no Treg efficacy data exist, the cure fraction and relapse hazard were treated as unknowns and varied across their full plausible range, anchored on three published analogs. Probabilistic analysis used [10,000] Monte Carlo draws; EVPPI was estimated by nonparametric regression.
 >
 > **Results.** [ICER, NMB and probability of cost-effectiveness by arm.] The EJP for Treg therapy was [$X] (95% credible interval [$X–$X]) at a $150,000/QALY threshold. At an acquisition price of [$X], Treg required a durable cure fraction of at least [X%] to be cost-effective. Population EVPI was [$X] per year, of which [X%] was attributable to the cure fraction and post-cure relapse hazard jointly and [X%] to acquisition cost.
 >
@@ -99,10 +99,10 @@ Stated as falsifiable aims. Each primary aim maps to one primary endpoint.
 |---|---|---|---|
 | Population | Biologic-naïve, mean age 35, 71 kg, 50% male, moderate-severe CD (from Aliyev) | Keep as base case; add refractory scenario | See Section 5 and Decision 3 |
 | Comparators | UST, IFX, (CT as post-failure pathway) | **Add ADA**; retain CT as the post-failure pathway, not a comparator arm | See Decision 2 |
-| Intervention | Hypothetical allogeneic Treg, 2 doses | **Single infusion base case**; second dose as scenario | Aligns with the single-infusion design of the allogeneic Tr1 programme now in Phase 1/2a; also the more favourable and more likely commercial configuration |
+| Intervention | Hypothetical allogeneic Treg, 2 doses | **Single infusion base case**; second dose as scenario — **the second-dose scenario (S6) was later formally dropped, not deferred, 2026-08-05: see §10.3/§10.4 and README.md's Status section. Single infusion is now the ONLY Treg dosing this project models, not a base case with a pending scenario alternative** | Aligns with the single-infusion design of the allogeneic Tr1 programme now in Phase 1/2a; also the more favourable and more likely commercial configuration |
 | Perspective | US formal healthcare sector | Keep; **add societal scenario** | US Second Panel recommends reporting both. The Manceur et al. (2020) absenteeism/disability data are already extracted in the workbook's *Cell therapy costs* sheet, so the marginal effort is low, and productivity effects materially favour a durable therapy |
 | Time horizon | 40 × 8-week cycles = 6.15 years | **Lifetime**, with 6.15-year and 10-year scenarios | A cure model with a 6-year horizon truncates precisely the benefit the paper is about. Requires US life tables and an explicit extrapolation assumption beyond trial-supported data — **implemented 2026-08-05, see below** |
-| Cycle length | 8 weeks | Keep | Matches q8w maintenance dosing for both UST and IFX; changing it would require re-deriving every transition probability |
+| Cycle length | 8 weeks | Keep — **superseded 2026-08-04: this project actually runs Aliyev's native 2-week cycle throughout, not 8 weeks (`R/00_derive_transition_probs.R`'s "third revision" header), dropping the matrix-power conversion this row's original "Keep 8 weeks" recommendation would have required** | Matches q8w maintenance dosing for both UST and IFX; changing it would require re-deriving every transition probability — **the re-derivation concern this rationale raised turned out to be avoidable: Aliyev's own Appendix S2 publishes transition probabilities natively at 2 weeks, so no conversion was actually needed once that source was found** |
 | Half-cycle correction | None | **Apply** (life-table or Simpson's 1/3) | CHEERS 2022 item 17; trivial to implement in code — **implemented 2026-08-05**, `R/04_costs_utilities.R`'s `half_cycle_weights()` (trapezoidal method); see A12, `docs/model_audit_v6.md`, for detail |
 | Discount rate | 3% costs and QALYs | Keep 3%; scenarios at 0%, 1.5% and 5% | 1.5% is worth including explicitly given the live methodological debate about discounting one-time potentially curative therapies |
 | WTP threshold | $150,000/QALY | Report $50k, $100k, $150k | $150,000 alone reads as the most permissive choice available |
@@ -126,7 +126,9 @@ Both comparators are now in a biosimilar market. Infliximab biosimilars have bee
 
 The lifetime horizon this section recommends is now implemented, closing the gap `R/05_deterministic_results.R`'s own module header had flagged ("no life-table data sourced anywhere in this repository"). Background mortality is US life-table, age- and sex-specific (item 7, §7.1), sourced from NCHS "United States Life Tables, 2021" (`data/raw/nchs_us_life_tables_2021.csv`) and applied via `R/utils/life_table.R`'s `death_prob_schedule()` and `R/utils/transition_matrix.R`'s `age_adjust_matrix()`, which **replaces** (not adds to) each maintenance matrix's Death-column entry with the life-table figure for the cohort's current attained age — Aliyev's own embedded trial mortality (~0.00006/2wk, flat and non-age-varying) is realistic for his short young-cohort follow-up but structurally wrong once the horizon runs into old age, which is the entire point of extending it (per this section's own "no CD excess mortality" framing, i.e. total mortality = general-population background only). Male and female sub-cohorts (50/50, per §5) are run separately against their own life-table curve and summed — exact by linearity, not an approximation. `HORIZON_CYCLES_LIFETIME` (`R/05_deterministic_results.R`) runs the cohort from baseline age 35 (§5) to the life table's terminal age 100. `run_base_case()`, `headroom_pi_star()`, `headroom_frontier()` and `R/08_ejp.R`'s EJP functions all take an opt-in `baseline_age`/`life_table` pair; `NULL` (the default) reproduces the exact pre-existing 6.15-year/10-year behaviour unchanged, so this is additive, not a breaking change to the earlier scenarios this section names.
 
-This resolves the structural-infeasibility problem the 6.15-year horizon had: at that horizon, no cure fraction at any plausible Treg acquisition price could make Treg cost-effective against comparators, because six years is too short for even a full durable cure to recoup a five-figure one-time price against comparators' recurring drug spend. At the lifetime horizon, the required cure fraction π\* at Treg's sourced acquisition price ($19,916.75, `data/processed/model_tenham_derived_treg_dose_cost.csv`) is feasible at all three WTP thresholds — see `output/tables/headroom_at_sourced_price_lifetime.csv` for the exact figures; §10.1 covers how the (π, price) frontier is reported generally, §10.3's S5 is the lifetime/10-year/6.15-year structural scenario this closes. PSA, EVPI/EVPPI and probabilistic EJP still run at the 6.15-year horizon this pass — extending `age_adjust_matrix()` to a ~40,000-call PSA is an unbenchmarked performance question, deliberately deferred (`R/05_deterministic_results.R`'s own module header).
+This resolves the structural-infeasibility problem the 6.15-year horizon had: at that horizon, no cure fraction at any plausible Treg acquisition price could make Treg cost-effective against comparators, because six years is too short for even a full durable cure to recoup a five-figure one-time price against comparators' recurring drug spend. At the lifetime horizon, the required cure fraction π\* at Treg's sourced acquisition price ($19,916.75, `data/processed/model_tenham_derived_treg_dose_cost.csv`) is feasible at all three WTP thresholds — see `output/tables/headroom_at_sourced_price.csv` for the exact figures; §10.1 covers how the (π, price) frontier is reported generally, §10.3's S5 is the lifetime/10-year/6.15-year structural scenario this closes.
+
+**2026-08-06 update (peer review 2026-08-05, B2):** the "PSA, EVPI/EVPPI and probabilistic EJP still run at the 6.15-year horizon" limitation this paragraph originally recorded here is now closed, not still deferred — an external review flagged it as a real inconsistency (the plan's own adopted base case and the actual PSA/EVPI/EVPPI/EJP pipeline were running at two different horizons), and `analysis/run_full_analysis.R` was restructured the same day as the B1 induction-cycle fix (`docs/model_audit_v6.md` A17) so every primary output — base case, headroom frontier, PSA, EVPI/EVPPI, EJP — now runs at the lifetime horizon by default, with the 6.15-year/10-year horizons retained as the named S5 comparability scenario. The performance concern this paragraph raised (extending `age_adjust_matrix()` to a ~40,000-call PSA) was real but solved, not avoided: `R/06_psa.R`'s comparator-arm occupancy trace is now hoisted out of the per-draw loop (`simulate_comparator_arm_lifetime()`, R/05) since none of it varies by draw, which is what makes a 10,000-draw lifetime PSA tractable (~75 min wall clock, confirmed by a live run). See README.md's Status section for the full detail and current headline numbers.
 
 ---
 
@@ -215,12 +217,23 @@ finding on its own.
 
 ## 6. Model structure
 
+*Implementation note, 2026-08-06:* this section's "8 weeks"/"8-week cycles" language below
+described the workbook this project was originally auditing (`IBD_CEA_v6_PSA.xlsm`) and this
+project's own pre-2026-08-04 design. Neither is what's actually implemented: this project has run
+Aliyev's native **2-week** cycle throughout since 2026-08-04's third revision
+(`R/00_derive_transition_probs.R`'s own header), and — per the peer-review-driven B1 fix,
+2026-08-06, `docs/model_audit_v6.md` A17 — induction itself is not a single 2-week step either; it
+runs Table 3's per-cycle matrix for 3 cycles (UST, its week-6 trial endpoint) or 2 cycles
+(IFX/ADA, week-4). Corrected in place below rather than left as a standing discrepancy; see
+`docs/model_structure.md` for the full technical spec as actually implemented (this section stays
+scoped to design rationale, not a duplicate of that spec, per this project's own convention).
+
 ### 6.1 Overview
 
 Two linked components, retained from the current design:
 
-1. **Decision tree (induction, 8 weeks).** Each arm's cohort is partitioned at the end of induction into Remission, Mild, Moderate-Severe Responder (M-SR), or non-response. Non-responders enter the conventional-therapy (CT) Markov and remain on CT-derived transition probabilities.
-2. **Cohort Markov (maintenance).** 8-week cycles. Living states: Remission, Mild, M-SR, Moderate-Severe (M-S), Surgery; absorbing state: Death. Patients on a biologic who deteriorate into M-S are switched to the CT track at the end of that cycle (this rule *is* correctly implemented in the current workbook).
+1. **Decision tree (induction, native 2-week cycle, run for multiple cycles).** Each arm's cohort is partitioned at the end of induction into Remission, Mild, Moderate-Severe Responder (M-SR), or non-response, by running Aliyev Supplementary Table 3's per-2-week-cycle Moderate-Severe transition matrix forward for 3 cycles (UST) or 2 cycles (IFX/ADA) — not a single step (B1 fix, `docs/model_audit_v6.md` A17). Non-responders enter the conventional-therapy (CT) Markov and remain on CT-derived transition probabilities.
+2. **Cohort Markov (maintenance).** Native 2-week cycles (Aliyev Supplementary Table 4, used unmodified — no cycle-length conversion). Living states: Remission, Mild, M-SR, Moderate-Severe (M-S), Surgery; absorbing state: Death. Patients on a biologic who deteriorate into M-S are switched to the CT track at the end of that cycle (this rule *is* correctly implemented in the current workbook).
 
 The redesign adds one state and one transition rule, applicable only to the Treg arm.
 
@@ -231,7 +244,7 @@ The redesign adds one state and one transition rule, applicable only to the Treg
 - No ongoing drug acquisition cost.
 - Reduced monitoring cost (recommend: remission-state monitoring cost, halved after year 2 — flag as assumption).
 - Utility equal to the Remission utility in the base case (scenario: SDR utility set to general-population utility for age, on the argument that a durable cure removes the residual disutility of managed disease — this is a meaningful scenario because it is where much of the cure's QALY value lives).
-- A low **annual relapse hazard** h, converted to an 8-week probability. Relapsed patients re-enter the ordinary Markov (base case: into Mild; scenario: into M-SR).
+- A low **annual relapse hazard** h, converted to a 2-week probability (`R/03_cure_fraction_module.R`'s `hazard_to_cycle_probability()`, native cycle length throughout — see this section's 2026-08-06 implementation note above). Relapsed patients re-enter the ordinary Markov (base case: into Mild; scenario: into M-SR).
 - **Cured patients never transition to the CT track.** Mechanistically, "flowing into conventional therapy" represents exhaustion of a maintenance drug; it has no meaning for a patient who is not on one. This resolves the second half of Decision 1.
 
 **Where the cure split happens — recommended: a 52-week landmark.** Rather than splitting responders into cured/not-cured at the end of induction, apply the split at cycle 7 (week 56, the nearest cycle boundary to 52 weeks), conditional on the patient being in Remission at that point:
@@ -253,10 +266,22 @@ advantage very slightly *reduces* aggregate QALYs (Aliyev's own Surgery row has 
 one-step return to Remission), even though it reliably raises NMB (the cost saving dominates) —
 see §10.4 for the full explanation.
 
+**Caveat added 2026-08-06 (peer review 2026-08-05's R2 finding, `docs/model_audit_v6.md` A18):**
+the QALY-direction part of this finding is NOT settled — Aliyev's own Surgery-state transitions
+have a second, irreconcilable published source (`data/raw/aliyev2019_appendixS1_table2_
+parameters.csv`'s 8-week figures, never wired into this model) implying a Surgery state patients
+stay in far longer than the 2-week Table 4 row actually used. Re-running S12's own HR grid against
+a Table-2-derived Surgery row (`R/utils/surgery_row_sensitivity.R`,
+`output/tables/scenario_r2_surgery_sensitivity.csv`) shows the QALY sign FLIPS under that
+alternative — QALYs *rise* as the advantage strengthens instead of falling. NMB still rises under
+either source (cost falls monotonically regardless), so the NMB-level conclusion is robust; the
+QALY-direction claim specifically should be reported as source-dependent, not as a settled
+structural finding about Aliyev's model.
+
 ### 6.3 State-transition diagram
 
 ```
-                       INDUCTION (decision tree, 8 weeks)
+                       INDUCTION (decision tree, native 2-week cycle x{2,3})
                        ─────────────────────────────────
                                   Cohort
                                     │
@@ -271,7 +296,7 @@ see §10.4 for the full explanation.
      M-SR)                     M-SR)               M-SR)
 
 
-                    MAINTENANCE (Markov, 8-week cycles)
+                    MAINTENANCE (Markov, native 2-week cycles)
                     ───────────────────────────────────
 
    BIOLOGIC TRACK (UST / IFX / ADA)          CT TRACK
@@ -313,7 +338,7 @@ Aliyev's source model caps biologic maintenance at 2 years, after which all rema
 
 | Arm | Recommendation | Rationale |
 |---|---|---|
-| UST / IFX / ADA | **Reinstate the cap in the base case** (switch to CT-derived probabilities and CT costs after cycle 13); no-cap as a structural scenario | Restores fidelity to the source model whose parameters we are borrowing; without it we are using Aliyev's numbers in a structure Aliyev did not validate. Expect a material reduction in comparator costs and therefore in Treg's EJP |
+| UST / IFX / ADA | **Reinstate the cap in the base case** (switch to CT-derived probabilities and CT costs after cycle 52 at this project's native 2-week cycle — cycle 13 under the 8-week-cycle design this row originally described, both meaning 104 weeks = 2 years; `cap_cycle = 52` throughout `R/`); no-cap as a structural scenario (S1, §10.3) | Restores fidelity to the source model whose parameters we are borrowing; without it we are using Aliyev's numbers in a structure Aliyev did not validate. Expect a material reduction in comparator costs and therefore in Treg's EJP |
 | TREG — cured (SDR) | **No cap. Ever.** | A cured patient is not on maintenance therapy; there is nothing to discontinue |
 | TREG — non-cured responders | Apply the same cap as the biologics in the base case | If non-cured patients are UST-equivalent, they should be treated identically; asymmetry here would be an unearned advantage |
 
@@ -573,6 +598,17 @@ Three findings worth surfacing, not just the mechanics:
   dominates the tiny QALY wobble, so the decision-relevant conclusion is exactly what §6.2's own
   framing anticipates; only the QALY component alone shows this small, explained non-monotonicity.
   Full derivation in `R/03_cure_fraction_module.R`'s own module header.
+  **2026-08-06 update (peer review 2026-08-05's R2 finding, `docs/model_audit_v6.md` A18,
+  R/utils/surgery_row_sensitivity.R):** the QALY-direction claim above depends specifically on
+  Aliyev's Table-4-sourced Surgery row (86.7% one-step return to Remission), which has a second,
+  irreconcilable published source (Table 2's own 8-week figures, dormant, never wired into this
+  model) implying a MUCH stickier Surgery state. Re-running this same scenario against a
+  Table-2-derived, 2-week-equivalent Surgery row (`run_scenario_r2_surgery_sensitivity()`,
+  `output/tables/scenario_r2_surgery_sensitivity.csv`) shows the QALY sign FLIPS — QALYs *rise*
+  as the advantage strengthens under that alternative, the intuitively-expected direction. NMB
+  still rises under either source (cost falls monotonically either way), so **the NMB/decision
+  conclusion is robust; the QALY-direction sub-claim specifically is source-dependent and should
+  not be reported as a settled fact about Aliyev's own model.**
 
 S6 (Treg 2-dose) is deliberately **deprioritized**, not merely unbuilt — see its own table row
 above; not repeated here.
@@ -792,7 +828,9 @@ Each requires an explicit yes/no or selection. Record the outcome, with date, in
 - **A15 (dose-cost discrepancy, Appendix A) closed**, no fix required: the ~0.9494× factor between `model_dose_costs_and_psa_ranges.csv`'s `value_usd` and `psa_base` columns is the same class of snapshot artefact as A16 (a shared multiplicative shock, identical to six figures across two independently-derived drugs, that cannot have originated inside either build-up). `psa_base` — already the figure `R/04_costs_utilities.R` uses — is independently traceable end to end; `value_usd` is not and was never wired in. Downgraded from "unresolved" to "resolved" in `docs/model_audit_v6.md`; dropped from the manuscript limitations list entirely, since it was never a modelling choice to defend.
 - **§4.2's comparator-pricing action item resolved the same day, in the same branch**, on the argument that it belongs beside A16 as a co-priority rather than under ordinary prioritisation: at π=0 the EJP collapses to essentially the discounted comparator drug spend displaced, so comparator acquisition price is the single largest lever on every headline number. See §4.2 for the full re-pricing (UST/IFX/ADA re-extracted at a single stated date, biosimilar-inclusive pricing now the base case, originator pricing the S8 scenario) and the resolution of the Part B ASP vs. NADAC benefit-routing question for UST maintenance specifically.
 
-*Addendum, 2026-08-05:* item 4 of the executive summary's own redesign list (§0.1) — extending the time horizon to lifetime — is now implemented, not just recommended. See §4.3 for the full detail (life-table sourcing, why background mortality replaces rather than adds to Aliyev's own embedded trial mortality, the male/female sub-cohort mechanics) and §7.1 item 7's status update. This closes the "structurally cannot capture the value of a cure" problem the 6-year horizon named as the reason for the redesign item in the first place: at the 6.15-year horizon, no cure fraction at any plausible price made Treg cost-effective; at the lifetime horizon, the required cure fraction π\* at Treg's sourced price is feasible at all three WTP thresholds (§10.1/§10.3 S5, `output/tables/headroom_at_sourced_price_lifetime.csv`). PSA/EVPI/EVPPI/probabilistic EJP remain at the 6.15-year horizon this pass (§4.3's closing paragraph) — not yet a decision requiring sign-off, a deferred performance question.
+*Addendum, 2026-08-05:* item 4 of the executive summary's own redesign list (§0.1) — extending the time horizon to lifetime — is now implemented, not just recommended. See §4.3 for the full detail (life-table sourcing, why background mortality replaces rather than adds to Aliyev's own embedded trial mortality, the male/female sub-cohort mechanics) and §7.1 item 7's status update. This closes the "structurally cannot capture the value of a cure" problem the 6-year horizon named as the reason for the redesign item in the first place: at the 6.15-year horizon, no cure fraction at any plausible price made Treg cost-effective; at the lifetime horizon, the required cure fraction π\* at Treg's sourced price is feasible at all three WTP thresholds (§10.1/§10.3 S5, `output/tables/headroom_at_sourced_price.csv`).
+
+*Addendum, 2026-08-06:* the previous sentence's "PSA/EVPI/EVPPI/probabilistic EJP remain at the 6.15-year horizon" is superseded — see §4.3's own 2026-08-06 update for the horizon-focus fix (peer review 2026-08-05, B2) that moved these to the lifetime horizon as primary, closing this as a decision, not leaving it deferred.
 
 **☑ Decision 6 — Population and horizon for monetised EVPI/EVPPI.**
 *Recommendation:* **Incident plus prevalent eligible US moderate-to-severe CD population, over a 10-year decision horizon, discounted at 3%; reported separately for the biologic-naïve-eligible and refractory-eligible denominators.**

@@ -12,8 +12,10 @@
 #
 # D-bar (discounted expected doses per patient) = 1 under the single-dose base case this whole
 # pipeline implements (R/04_costs_utilities.R's treg_dose_cost(), R/05_deterministic_results.R's
-# run_treg_arm_lifetime() -- both enforce n_doses == 1; the 2-dose structural scenario needs per-
-# cycle-trace-level logic neither has, same restriction, same reason, not re-litigated here).
+# run_treg_arm_lifetime() -- both enforce n_doses == 1; the 2-dose structural scenario (S6) was
+# formally DROPPED 2026-08-05, not merely deferred for lack of per-cycle-trace-level logic --
+# R/04's own module header has the full "update" note -- so D_BAR = 1 is this project's permanent
+# dosing assumption, not a placeholder awaiting a scenario that was never built).
 # D_BAR below is hardcoded to 1 for exactly this reason, not left as a free parameter nobody has
 # wired a real value for.
 #

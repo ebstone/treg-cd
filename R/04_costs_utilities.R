@@ -212,6 +212,14 @@
 # one-time decision-tree cost, so belongs with the scenario-running logic (R/05/§10.3), not this
 # function. treg_dose_cost() enforces n_doses == 1 rather than silently accepting a larger value
 # and getting the 2-dose scenario's actual mechanics wrong.
+#
+# **Update, 2026-08-05:** S6 was subsequently formally DROPPED (R/09_scenarios.R's own module
+# header, docs/analysis_plan.md §10.3/§10.4), not merely deferred as "not implemented here" above
+# implied at the time it was written -- no dosing-interval assumption for a second dose exists
+# anywhere in this project's sourcing, and single-dose was already the deliberately-chosen base
+# case regardless. `n_doses == 1` is therefore this project's ONLY Treg dosing assumption now, not
+# a base case awaiting a pending scenario alternative -- the enforcement above is permanent, not
+# a placeholder.
 
 if (!exists("MAINTENANCE_STATES")) source("R/utils/transition_matrix.R")
 if (!exists("discount_factor")) source("R/02_markov_engine.R")

@@ -78,6 +78,7 @@
 #   isn't worth it unless a real anchor turns up later.
 
 if (!exists("run_base_case")) source("R/05_deterministic_results.R")
+if (!exists("build_table2_surgery_row")) source("R/utils/surgery_row_sensitivity.R")
 
 #' Named pi anchor points for S4/S11 (Decision 4's own recorded resolution, analysis_plan.md
 #' §7.2/§15: "report named scenario points at pi = 0% (null/floor case), 50%, 75%, and 90%").
@@ -333,6 +334,73 @@ run_scenario_s12_non_cured_hr <- function(n_cycles = HORIZON_CYCLES_6YR,
     c(list(non_cured_hazard_ratio = hr, qalys = s$qalys, total_cost = s$total_cost), nmb_cols)
   })
   do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
+}
+
+# ---- R2: S12 re-run against a Table-2-derived Surgery row (peer review 2026-08-05 sensitivity ----
+# ---- check, docs/model_audit_v6.md A17's own follow-up note) -------------------------------------
+
+#' Re-runs S12's own hazard-ratio grid (`NON_CURED_HR_GRID`) twice: once against the real,
+#' Table-4-sourced UST matrix (`run_scenario_s12_non_cured_hr()`'s own base case, unchanged), and
+#' once against a LOCAL copy with the Surgery row replaced by
+#' `R/utils/surgery_row_sensitivity.R`'s Table-2-derived alternative (that file's own header has
+#' the full derivation and every assumption involved). Both use IDENTICAL mechanics
+#' (`apply_non_cured_hazard_ratio()`, pi=0 Null floor, same WTP thresholds) -- the only thing that
+#' differs is which Surgery row the non-cured track's base matrix carries BEFORE the HR transform
+#' is applied, isolating exactly the question this sensitivity check exists to answer: does S12's
+#' counterintuitive "QALYs fall very slightly as the advantage strengthens" finding survive if
+#' Aliyev's dormant, much STICKIER Table 2 Surgery dynamics are used instead of Table 4's?
+#' A `qaly_direction` column reports, per source, whether QALYs at the most-advantaged HR in the
+#' grid are above or below QALYs at HR=1 -- the direct, machine-checkable answer to "did the sign
+#' flip", rather than requiring a reader to eyeball the raw numbers.
+#'
+#' Only the Treg non-cured track is affected (same scope as S12 itself) -- the real UST comparator
+#' arm's own matrix, and every other output this project produces, are untouched; this function
+#' builds its own local `matrices` copy rather than mutating anything shared.
+run_scenario_r2_surgery_sensitivity <- function(n_cycles = HORIZON_CYCLES_6YR,
+                                                 weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
+                                                 cycle_weeks = 2, annual_rate = 0.03,
+                                                 apply_cap = TRUE, cap_cycle = 52,
+                                                 raw_dir = "data/raw", proc_dir = "data/processed",
+                                                 baseline_age = NULL, life_table = NULL,
+                                                 hazard_ratio_grid = NON_CURED_HR_GRID) {
+  matrices_table4 <- build_all_transition_matrices(raw_dir)
+  matrices_table2 <- matrices_table4
+  matrices_table2[["UST"]] <- apply_table2_surgery_row(matrices_table4[["UST"]])
+  treg_price <- load_treg_dose_acquisition_cost(proc_dir)
+
+  run_grid <- function(matrices, surgery_source) {
+    rows <- lapply(hazard_ratio_grid, function(hr) {
+      s <- run_treg_arm_lifetime(
+        n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price,
+        matrices = matrices, weight_kg = weight_kg, cycle_weeks = cycle_weeks,
+        annual_rate = annual_rate, cap_cycle = cap_cycle, apply_cap = apply_cap,
+        raw_dir = raw_dir, proc_dir = proc_dir, baseline_age = baseline_age,
+        life_table = life_table, non_cured_hazard_ratio = hr
+      )
+      nmb_cols <- stats::setNames(
+        as.list(vapply(WTP_THRESHOLDS_USD, function(wtp) net_monetary_benefit(s, wtp), numeric(1))),
+        paste0("nmb_at_", format(WTP_THRESHOLDS_USD, scientific = FALSE, trim = TRUE))
+      )
+      c(list(surgery_source = surgery_source, non_cured_hazard_ratio = hr, qalys = s$qalys,
+             total_cost = s$total_cost), nmb_cols)
+    })
+    do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))
+  }
+
+  out <- rbind(
+    run_grid(matrices_table4, "table4_2wk_sourced"),
+    run_grid(matrices_table2, "table2_8wk_converted")
+  )
+
+  most_advantaged_hr <- min(hazard_ratio_grid)
+  direction <- vapply(unique(out$surgery_source), function(src) {
+    sub <- out[out$surgery_source == src, ]
+    qaly_at_1 <- sub$qalys[sub$non_cured_hazard_ratio == 1]
+    qaly_at_strongest <- sub$qalys[sub$non_cured_hazard_ratio == most_advantaged_hr]
+    if (qaly_at_strongest > qaly_at_1) "rises" else if (qaly_at_strongest < qaly_at_1) "falls" else "unchanged"
+  }, character(1))
+  out$qaly_direction <- direction[out$surgery_source]
+  out
 }
 
 # ---- S7: SDR utility = Remission vs. general-population ----------------------------------------
