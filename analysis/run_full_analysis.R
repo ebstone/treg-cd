@@ -44,6 +44,28 @@
 #
 # Everything else about what this script computes (Aims 1-4, the h sweep, prior-sensitivity,
 # refractory scenario) is unchanged from the first pass -- see the per-step comments below.
+#
+# RELAPSE HAZARD, 2026-08-06 (peer review's B3, docs/model_audit_v6.md A19). **Every Treg-involving
+# output below is superseded again by this change, for the third time in this file's short history
+# (A16, then B1, now B3).** Nothing in THIS script changed to pick it up, exactly as with B1: the
+# post-cure relapse hazard h now defaults to duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)
+# (a median 10 years of drug-free remission) in headroom_pi_star()/headroom_frontier() (R/05) and
+# ejp_deterministic()/ejp_frontier() (R/08) instead of 0 (a permanent cure), and R/06_psa.R samples
+# it per draw around that same mean, so every call below inherits the base-case durability
+# assumption automatically. Two things follow, both worth stating before anyone diffs the tables:
+#
+# - **What moves:** headroom_frontier.csv, headroom_at_sourced_price.csv, ejp_deterministic.csv,
+#   ejp_frontier.csv, psa_draws.csv (plus a new relapse_hazard_annual column), psa_ce_plane.csv,
+#   psa_ceac.csv, evpi_surface.csv, evppi_by_subset.csv (plus new B / A u B rows),
+#   evppi_prior_sensitivity.csv, ejp_probabilistic.csv, headroom_frontier_by_horizon.csv. pi* rises
+#   and P* falls, both substantially -- a cure that half-decays in a decade is worth much less over
+#   a lifetime horizon than one that never decays.
+# - **What does NOT move:** base_case_results.csv, base_case_results_by_horizon.csv and
+#   refractory_scenario_results.csv are bit-identical, because they report Treg only at pi = 0,
+#   where no patient ever enters the SDR state and h multiplies nothing (run_base_case()'s own
+#   comment in R/05 has the argument, and a test asserts it). Every comparator (UST/IFX/ADA) figure
+#   everywhere in this script is likewise untouched: h reaches the model only through Treg's SDR
+#   track. headroom_frontier_by_duration.csv is also unchanged -- it always passed T explicitly.
 
 source("R/utils/transition_matrix.R")
 source("R/utils/life_table.R")
@@ -95,6 +117,11 @@ write_table(frontier, "headroom_frontier.csv")
 
 # The headline check the lifetime horizon exists to make: at Treg's actual sourced acquisition
 # price, what durable cure fraction does the lifetime horizon require, at each WTP threshold?
+# `relapse_hazard_annual` is left implicit here (and in the frontier above, and in step 5's EJP
+# calls) so it picks up R/05's own base-case default -- the 10-year median SDR duration, since
+# 2026-08-06. That is deliberate, not an oversight: the base case belongs in one place, not
+# restated at every call site where it could drift. The h SWEEP in step 6 is where h is passed
+# explicitly, precisely because that step's job is to vary it.
 treg_price <- load_treg_dose_acquisition_cost()
 headroom_at_sourced_price <- do.call(rbind, lapply(WTP_GRID, function(w) {
   res <- headroom_pi_star(treg_price, wtp_usd = w, n_cycles = HORIZON_CYCLES_LIFETIME,
@@ -136,6 +163,14 @@ write_table(evppi_subset, "evppi_by_subset.csv")
 convergence_counts <- unique(pmin(c(500, 1000, 2000, 5000, PSA_N_DRAWS), PSA_N_DRAWS))
 evppi_conv <- evppi_convergence(psa_results, "pi_sdr", WTP_PRIMARY, convergence_counts)
 write_table(evppi_conv, "evppi_convergence_subset_A.csv")
+
+# Subset B gets its own convergence check (added 2026-08-06 alongside B3), not just subset A's:
+# analysis_plan.md §9.3 asks for a convergence check because regression-based EVPPI estimates are
+# unstable at small draw counts, and that instability is worst for a SMALL EVPPI -- which subset B
+# is expected to be relative to A. A converged A tells you nothing about whether B's number is
+# real, and Aim 3's comparison rests on B being a real number, so it is checked directly.
+evppi_conv_b <- evppi_convergence(psa_results, "relapse_hazard_annual", WTP_PRIMARY, convergence_counts)
+write_table(evppi_conv_b, "evppi_convergence_subset_B.csv")
 
 # ---- 5. EJP (deterministic + probabilistic) + gross margin over COGS (lifetime horizon) --------
 cat("\n=== 5/10: EJP (lifetime horizon) ===\n")
@@ -238,7 +273,8 @@ write_table(refractory_scenario, "refractory_scenario_results.csv")
 cat("\n=== 10/10: done ===\n")
 cat("Primary (lifetime-horizon) outputs: base_case_results.csv, headroom_frontier.csv,",
     "headroom_at_sourced_price.csv, psa_draws.csv, psa_ce_plane.csv, psa_ceac.csv,",
-    "evpi_surface.csv, evppi_by_subset.csv, evppi_convergence_subset_A.csv, ejp_deterministic.csv,",
+    "evpi_surface.csv, evppi_by_subset.csv, evppi_convergence_subset_A.csv,",
+    "evppi_convergence_subset_B.csv, ejp_deterministic.csv,",
     "ejp_frontier.csv, ejp_probabilistic.csv, headroom_frontier_by_duration.csv,",
     "pi_factorization_check.csv, evppi_prior_sensitivity.csv.\n")
 cat("Comparability-scenario outputs (S5 horizon, S3 refractory):",

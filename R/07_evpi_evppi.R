@@ -9,6 +9,16 @@
 # fixed is undefined by construction (A14, docs/model_audit_v6.md, says exactly this about the
 # workbook's own PSA), not a choice this module is deferring on its own initiative.
 #
+# SECOND PASS, 2026-08-06 (peer review 2026-08-05's B3; docs/model_audit_v6.md A19). **Subset B
+# (the post-cure relapse hazard h) and the durability block A u B now exist**, because R/06_psa.R
+# now samples h instead of hardcoding it to 0. This is the whole point of that fix rather than a
+# side effect of it: analysis_plan.md's Aim 3 is stated as a falsifiable comparison -- "the
+# durability block (cure fraction + relapse hazard) does or does not carry higher EVPPI than the
+# cost block" -- and with h unsampled, the durability block was literally just subset A wearing a
+# different label, so Aim 3 could not be answered at all, only half-answered without saying so.
+# Every EVPI/EVPPI number this module produced before this pass is superseded, since the draws
+# underneath them all assumed a permanent cure.
+#
 # ---- A real environment gap, not a design choice: voi/BCEA/INLA are unavailable here -----------
 #
 # analysis_plan.md §9.3 specifies the `voi` package (GAM for low-dimensional subsets, SPDE-INLA
@@ -23,13 +33,16 @@
 # path uses -- Strong, Oakley & Brennan (2014)'s nonparametric regression estimator -- directly
 # against `mgcv::gam()`, which IS available (`mgcv` ships as part of every standard R
 # installation, unlike voi/BCEA/INLA, so this has no real dependency risk). Every subset actually
-# computable from R/06's current PSA (A, C, E, and their unions) is low-dimensional enough (<=5
-# raw parameters, PCA-reduced to 2 components above that -- see pca_reduce()) that GAM is the
+# computable from R/06's current PSA (A, B, C, E, and their unions) is low-dimensional enough (<=7
+# raw parameters, PCA-reduced to 2 components above 2 -- see pca_reduce()) that GAM is the
 # right tool regardless of voi's own availability; SPDE-INLA's higher-dimensional case (subsets
 # D/F, comparator/induction transition probabilities) doesn't arise yet anyway, since R/06 doesn't
 # sample those parameters at all (module header, R/06_psa.R). If/when this environment gets a
 # working Fortran toolchain, cross_check_voi() below is written and ready -- it just isn't
-# exercised by anything else in this module.
+# exercised by anything else in this module. Note that analysis_plan.md §9.3's own method
+# specification names "A, B, C, and the A u B pair" as exactly the low-dimensional GAM cases, so
+# adding B and A u B here is running the plan's specified method on the plan's specified subsets,
+# not extending it.
 #
 # ---- Two distinct EVPI framings, both requested, both implemented differently -------------------
 #
@@ -76,12 +89,16 @@
 #   severe-eligible and biologic-naive-vs-refractory fractions "Open -- must not be assumed", so
 #   there is no sourced number to default to. Not a gap in this module; a gap in Gate 3's
 #   parameterisation work.
-# - **EVPPI for subsets B/D/F/G** (relapse hazard h; comparator maintenance transitions; induction
-#   response probabilities; surgery transitions/cost) -- undefined until R/06_psa.R actually
-#   samples those parameters (module header, R/06_psa.R, explains why each isn't sampled yet). The
-#   h sweep added the same day as this prior-sensitivity work (R/05_deterministic_results.R's
-#   headroom_frontier_by_duration()) is a DETERMINISTIC sweep over the relapse hazard, not a PSA
-#   sample of it -- it doesn't change this; subset B remains undefined here.
+# - **EVPPI for subsets D/F/G** (comparator maintenance transitions; induction response
+#   probabilities; surgery transitions/cost) -- undefined until R/06_psa.R actually samples those
+#   parameters (module header, R/06_psa.R, explains why each isn't sampled yet). ~~Subset B~~ is no
+#   longer on this list as of 2026-08-06: h IS sampled now. The distinction that kept it here is
+#   still worth keeping in mind when reading the two side by side, though --
+#   R/05_deterministic_results.R's headroom_frontier_by_duration() is a DETERMINISTIC sweep over T
+#   (it shows how pi* moves as durability is varied by hand), while subset B's EVPPI is a
+#   probabilistic quantity built on R/06's Gamma prior over h. They answer different questions and
+#   the sweep is NOT a substitute for the EVPPI, which is why B stayed genuinely undefined until
+#   the PSA sampled h rather than being "already covered by the sweep."
 # - **The voi/BCEA cross-check** analysis_plan.md sec 9.3 asks for -- see above; written
 #   (cross_check_voi()) but inert in this environment.
 
@@ -252,9 +269,23 @@ reduce_for_gam <- function(m, max_raw_dims = 2, n_components = 2) {
 }
 
 #' EVPPI for every subset actually computable from R/06_psa.R's current PSA output (module
-#' header): A (pi), C (Treg price), E (the utility chain), and their unions -- each evaluated at
-#' the REFERENCE scenario (no price override, module header framing 2), against the same total
-#' EVPI so every row's share of it is directly comparable. Any subset with more than 2 raw
+#' header): A (pi), B (post-cure relapse hazard h), C (Treg price), E (the utility chain), and
+#' their decision-relevant unions -- each evaluated at the REFERENCE scenario (no price override,
+#' module header framing 2), against the same total EVPI so every row's share of it is directly
+#' comparable.
+#'
+#' **`A u B` is the row Aim 3 is actually about**, and it is in analysis_plan.md §9.3's own subset
+#' table under that name ("Durability block -- combined value of the whole durability question;
+#' report jointly, A and B are decision-relevant together"). Aim 3's falsifiable claim is the
+#' comparison of that row against C (the cost block): a single trial extension resolving both the
+#' cure fraction and its durability is one fundable research action, so its value is EVPPI(A u B),
+#' not EVPPI(A) + EVPPI(B) -- EVPPI is not additive over subsets, and reporting the sum in its
+#' place would be a methodological error, not a shortcut. `A u B u C u E` (added 2026-08-06,
+#' replacing the old `A u C u E`) is the all-sampled-parameters row: it is a useful upper reference
+#' against total EVPI, and it necessarily moved when h joined the sampled set, since "all
+#' parameters" now means four blocks rather than three.
+#'
+#' Any subset with more than 2 raw
 #' parameters (E alone, and every union involving it) is PCA-reduced to 2 components first
 #' (reduce_for_gam(), analysis_plan.md sec 9.3's own "consider a principal-components pre-
 #' reduction and report it") -- `n_raw_params`/`n_params_used`/`variance_explained` in the
@@ -270,10 +301,13 @@ reduce_for_gam <- function(m, max_raw_dims = 2, n_components = 2) {
 #' approximation, not a bug in the arithmetic -- don't read the subset table as a clean monotone
 #' ladder; `variance_explained` tells you how much to trust a given reduced row's number.
 #'
-#' Parameter values are pulled from the TREG rows only: pi_sdr and treg_price are NA for the
-#' three comparators (R/06_psa.R's run_psa(), by construction -- they don't depend on either),
-#' while the 5 util_* columns are identical across all 4 arms within a draw, so reading them from
-#' TREG's rows alone is not a loss of information, just a convenient single source with no NAs.
+#' Parameter values are pulled from the TREG rows only: pi_sdr, treg_price and
+#' relapse_hazard_annual are all NA for the three comparators (R/06_psa.R's run_psa(), by
+#' construction -- they don't depend on any of them), while the 5 util_* columns are identical
+#' across all 4 arms within a draw, so reading them from TREG's rows alone is not a loss of
+#' information, just a convenient single source with no NAs. That the relapse hazard is a
+#' Treg-only column is a modelling fact, not a data-layout convenience: h enters only through the
+#' SDR track (R/03_cure_fraction_module.R), which no comparator arm has.
 #'
 #' `weights = NULL` (default): every draw counted equally under the prior that actually generated
 #' it (U(0,1) for pi, module header) -- unchanged from before `weights` existed. A non-NULL vector
@@ -291,14 +325,24 @@ evppi_by_subset <- function(psa_results, wtp_usd, weights = NULL) {
   treg <- treg[order(treg$draw), ]
   util_cols <- c("util_modsev", "util_resp", "util_mild", "util_remission", "util_surgery")
 
+  # Fail loudly, here, on a psa_results produced before 2026-08-06: such a table has no
+  # relapse_hazard_annual column at all, and cbind()-ing a NULL column would silently drop subset
+  # B's parameter rather than erroring, leaving a "B" row in the output table that was fitted
+  # against nothing. A stale draws file is exactly the failure mode this project has been bitten by
+  # before (A16's stray PSA draw), so it gets an explicit check rather than a downstream NA.
+  stopifnot("relapse_hazard_annual" %in% names(treg), !anyNA(treg$relapse_hazard_annual))
+
   raw_subsets <- list(
     A = cbind(pi = treg$pi_sdr),
+    B = cbind(h = treg$relapse_hazard_annual),
     C = cbind(price = treg$treg_price),
     E = as.matrix(treg[, util_cols]),
+    `A u B` = cbind(pi = treg$pi_sdr, h = treg$relapse_hazard_annual),
     `A u C` = cbind(pi = treg$pi_sdr, price = treg$treg_price),
     `A u E` = cbind(pi = treg$pi_sdr, as.matrix(treg[, util_cols])),
     `C u E` = cbind(price = treg$treg_price, as.matrix(treg[, util_cols])),
-    `A u C u E` = cbind(pi = treg$pi_sdr, price = treg$treg_price, as.matrix(treg[, util_cols]))
+    `A u B u C u E` = cbind(pi = treg$pi_sdr, h = treg$relapse_hazard_annual,
+                             price = treg$treg_price, as.matrix(treg[, util_cols]))
   )
 
   reduced <- lapply(raw_subsets, reduce_for_gam)
@@ -328,6 +372,27 @@ evppi_by_subset <- function(psa_results, wtp_usd, weights = NULL) {
 #' It requires no re-simulation" -- the SAME 10,000 draws R/06_psa.R already produced are reused,
 #' just re-weighted, to approximate what EVPPI would have looked like under a prior the PSA never
 #' actually sampled from.
+#'
+#' **Checked when h joined the sampled set (2026-08-06, B3): this function still needs to know
+#' about pi only, and that is a derivation, not an assumption.** The concern is real -- these
+#' weights are now applied to a table whose draws vary in four parameters, not three, so it is
+#' worth writing down why a pi-only weight is still the correct importance weight. R/06_psa.R
+#' draws pi and h independently of each other and of everything else, so the joint sampling density
+#' factorises, f_old(pi, h, price, u) = f_unif(pi) f_gamma(h) f(price) f(u). The alternative prior
+#' being asked about changes the pi factor and nothing else, so the importance-weight ratio is
+#' w = f_new(pi) f_gamma(h) f(price) f(u) / [f_unif(pi) f_gamma(h) f(price) f(u)] = f_new(pi) /
+#' f_unif(pi) -- every non-pi factor cancels exactly, whatever it is and however many there are.
+#' The weights below are therefore unchanged and still exact. (Had pi and h been sampled with any
+#' dependence between them -- a correlated durability prior, say -- this would NOT hold and the
+#' weight would need the joint density.)
+#'
+#' The same identity also says what an h-prior sensitivity analysis would look like, if one is
+#' wanted: weights of dgamma(h, new_shape, new_rate) / dgamma(h, RELAPSE_HAZARD_PSA_GAMMA_SHAPE,
+#' shape/mean) evaluated on the sampled h column, passed through the identical machinery. Not
+#' implemented here -- the shape is a single documented modelling choice
+#' (sample_relapse_hazard_draws(), R/06_psa.R) rather than a contested one like pi's U(0,1), and
+#' the deterministic T sweep already reports durability sensitivity in units a reader can read --
+#' but it is a two-line addition on top of this function if a reviewer asks for it.
 prior_reweight <- function(pi_values, dprior) {
   w <- dprior(pi_values)
   stopifnot(all(is.finite(w)), all(w >= 0), any(w > 0))
@@ -357,6 +422,12 @@ PI_PRIOR_SENSITIVITY_SPECS <- list(
 #' by parameter subset as the finding, and the LEVEL as prior-dependent" (§3.2) -- a stable rank
 #' across all three `prior` groups alongside a shifting `evppi` column IS that finding; this
 #' function computes the ingredients, the manuscript states the conclusion.
+#'
+#' Since 2026-08-06 the table this reweights includes subsets B and A u B, so the memo's own
+#' ranking-vs-level caution now covers Aim 3's durability-block-vs-cost-block comparison directly:
+#' if A u B outranks C under all three priors for pi, that ranking is the reportable finding and
+#' its dollar level is not. Only pi's prior is varied here (prior_reweight()'s docstring derives
+#' why pi-only weights remain exact now that h is also sampled).
 evppi_prior_sensitivity <- function(psa_results, wtp_usd, prior_specs = PI_PRIOR_SENSITIVITY_SPECS) {
   treg <- psa_results[psa_results$intervention == "TREG", ]
   treg <- treg[order(treg$draw), ]

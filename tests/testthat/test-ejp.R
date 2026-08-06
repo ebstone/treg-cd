@@ -61,14 +61,49 @@ test_that("ejp_deterministic's p_star makes INMB exactly 0 against the identifie
   res <- ejp_deterministic(0.4, wtp_usd = 100000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
 
   matrices <- build_all_transition_matrices(RAW_DIR)
-  treg_at_pstar <- run_treg_arm_lifetime(HORIZON_CYCLES_6YR, 0.4, 0, res$p_star, matrices,
-                                          raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  # Passed by NAME, and matching ejp_deterministic()'s own default (the 10-year anchor since
+  # 2026-08-06, B3): an independent re-derivation of P* has to re-run Treg under the SAME
+  # durability assumption the solve used, or it is checking a different equation. The previous
+  # positional `0` in this slot stopped doing that the moment the default changed.
+  treg_at_pstar <- run_treg_arm_lifetime(
+    HORIZON_CYCLES_6YR, 0.4,
+    relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
+    price_usd = res$p_star, matrices = matrices, raw_dir = RAW_DIR, proc_dir = PROC_DIR
+  )
   comp_summary <- run_comparator_arm_lifetime(res$comparator, HORIZON_CYCLES_6YR, matrices,
                                                raw_dir = RAW_DIR, proc_dir = PROC_DIR)
 
   treg_nmb <- net_monetary_benefit(treg_at_pstar, 100000)
   comp_nmb <- net_monetary_benefit(comp_summary, 100000)
   expect_equal(treg_nmb, comp_nmb, tolerance = 1e-6)
+})
+
+test_that("ejp_deterministic and ejp_frontier default to the same 10-year relapse anchor R/05's headroom functions do (B3's deterministic half)", {
+  # The round-trip tests above would still pass if BOTH sides defaulted to the same WRONG hazard --
+  # they only check the two implementations agree with each other. This checks the shared default
+  # is the sourced anchor, and that it is no longer 0 (a permanent cure), which is what B3 found.
+  # Both files have to be asserted, in one test, because the failure mode B3 exposed is precisely a
+  # default drifting apart across module boundaries.
+  anchor <- duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)
+  default_ejp <- ejp_deterministic(0.5, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  at_anchor <- ejp_deterministic(0.5, wtp_usd = 150000, relapse_hazard_annual = anchor,
+                                  raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  at_zero <- ejp_deterministic(0.5, wtp_usd = 150000, relapse_hazard_annual = 0,
+                                raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+
+  expect_equal(default_ejp$p_star, at_anchor$p_star)
+  # A cure that decays justifies a LOWER price than one that never does -- direction, not just
+  # difference.
+  expect_true(default_ejp$p_star < at_zero$p_star)
+
+  frontier_default <- ejp_frontier(c(0.5, 0.8), wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_equal(frontier_default$p_star[frontier_default$pi_sdr == 0.5], at_anchor$p_star)
+
+  # And R/05's own default must be the identical value, since the two modules solve the same
+  # INMB = 0 curve: a P* solved under one durability assumption fed into a pi* solved under
+  # another would round-trip to the wrong pi without either function being individually wrong.
+  rt <- headroom_pi_star(default_ejp$p_star, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_equal(rt$pi_star, 0.5, tolerance = 1e-3)
 })
 
 test_that("ejp_frontier and headroom_frontier trace the same (pi, price) curve from opposite directions", {

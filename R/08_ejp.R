@@ -134,7 +134,19 @@ gross_margin_over_cogs <- function(p_star, proc_dir = "data/processed") {
 #' to both the comparator summaries and the Treg run -- preserves the round-trip cross-check
 #' against headroom_pi_star() (test-ejp.R) at the lifetime horizon too, not just the two
 #' pre-lifetime-horizon comparability scenarios.
-ejp_deterministic <- function(pi_sdr, wtp_usd, relapse_hazard_annual = 0, n_cycles = HORIZON_CYCLES_6YR,
+#'
+#' `relapse_hazard_annual` defaults to `duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)`
+#' (R/05_deterministic_results.R) -- a median 10 years of drug-free remission -- **not to 0, which
+#' is what it defaulted to before 2026-08-06 (B3, docs/model_audit_v6.md A19)**. The default has to
+#' match headroom_pi_star()'s exactly, not merely be reasonable on its own: this module's whole
+#' validation argument is that ejp_deterministic(pi, lambda) and headroom_pi_star(P*, lambda) trace
+#' the same INMB = 0 curve from opposite sides and round-trip through each other (module header,
+#' test-ejp.R). Two different implicit durability assumptions on the two sides would break that
+#' round-trip silently -- the curves would simply be different curves -- which is precisely why B3's
+#' deterministic half spanned both files and had to be fixed in one change, not two.
+ejp_deterministic <- function(pi_sdr, wtp_usd,
+                               relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
+                               n_cycles = HORIZON_CYCLES_6YR,
                                matrices = NULL, comparator_summaries = NULL,
                                weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2,
                                annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
@@ -183,8 +195,11 @@ ejp_deterministic <- function(pi_sdr, wtp_usd, relapse_hazard_annual = 0, n_cycl
 #' Builds matrices/comparator summaries ONCE for the whole grid, same pattern as
 #' headroom_frontier() itself.
 #' `baseline_age`/`life_table = NULL` (default): same meaning as ejp_deterministic()'s
-#' equivalent parameters, threaded through unchanged.
-ejp_frontier <- function(pi_grid, wtp_usd, relapse_hazard_annual = 0, n_cycles = HORIZON_CYCLES_6YR,
+#' equivalent parameters, threaded through unchanged. So is `relapse_hazard_annual`, including its
+#' 2026-08-06 default change from 0 to the 10-year anchor -- see ejp_deterministic()'s docstring.
+ejp_frontier <- function(pi_grid, wtp_usd,
+                          relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
+                          n_cycles = HORIZON_CYCLES_6YR,
                           weight_kg = ASSUMED_PATIENT_WEIGHT_KG, cycle_weeks = 2, annual_rate = 0.03,
                           apply_cap = TRUE, cap_cycle = 52, raw_dir = "data/raw",
                           proc_dir = "data/processed", baseline_age = NULL, life_table = NULL) {

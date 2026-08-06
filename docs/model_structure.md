@@ -221,7 +221,14 @@ same way `discount_factor()` converts an annual rate) has no sourced value eithe
 by its implied median duration T (`duration_to_hazard()`/`hazard_to_duration()`,
 `RELAPSE_DURATION_GRID_YEARS` = {2, 5, 10, 20, ∞}, base case T = 10 years) and swept jointly with
 π and price for the (π, T, price) headroom surface, since h interacts materially with a lifetime
-horizon (negligibly at 6.15 years).
+horizon (negligibly at 6.15 years). The T = 10 base case is the actual default of every function
+that produces a headline number — `headroom_pi_star()`/`headroom_frontier()` (R/05) and
+`ejp_deterministic()`/`ejp_frontier()` (R/08) — and the mean of the PSA's Gamma prior on h
+(`sample_relapse_hazard_draws()`, R/06). **That was true only from 2026-08-06**: before then all
+five defaulted to h = 0, i.e. a permanent cure, which is the most favourable assumption available
+to Treg rather than a neutral one (peer review's B3, `docs/model_audit_v6.md` A19). h = 0 now
+appears only where it is explicitly asked for — the T = ∞ row of the sweep, and the π = 0 call
+sites where it is structurally inert because no patient ever enters SDR.
 
 **Relapse re-entry.** A relapsed SDR patient re-enters the ordinary Markov trace at Mild (base
 case) or Moderate-Severe Responder (scenario S11, `relapse_destination` parameter) — real but

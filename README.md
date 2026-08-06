@@ -523,7 +523,108 @@ pre-B1-fix figures quoted earlier in this section:
   see below.
 - 18 tables written to `output/tables/` (15 primary lifetime-horizon outputs + 3 comparability-
   scenario outputs — S5 horizon, S3 refractory). Full list printed at the end of the script's own
-  log output.
+  log output. [19 as of the B3 fix below, which adds `evppi_convergence_subset_B.csv`.]
+
+**B3 fix — the post-cure relapse hazard (2026-08-06), from the same external peer review dated
+2026-08-05 (`docs/model_audit_v6.md` A19 — A18 was claimed the same morning by the R2 Surgery-row
+entry below, which landed on `main` while this was in progress). Every Treg-involving deterministic
+and probabilistic number produced before this commit is superseded — including the ones dated
+earlier today, in the entry immediately above. Comparator-only numbers are NOT affected; see "What
+does not move" below for the exact boundary.**
+
+The review reported B3 as a PSA gap: `run_psa()` hardcoded `relapse_hazard_annual = 0` on every
+draw, so EVPPI subset B (durability) and the A∪B durability block did not exist, and Aim 3 — "does
+the durability block or the cost block carry higher EVPPI" — was unanswerable. Tracing every call
+site while fixing it found the defect was **bigger than reported and had a second, deterministic
+half**, so both are closed here:
+
+- **The deterministic half, not in the original report.** `headroom_pi_star()` and
+  `headroom_frontier()` (`R/05_deterministic_results.R`) and `ejp_deterministic()` and
+  `ejp_frontier()` (`R/08_ejp.R`) all *defaulted* `relapse_hazard_annual = 0`, and
+  `analysis/run_full_analysis.R`'s primary calls pass none of them explicitly. So every π\* and
+  every EJP figure this project has published — including this morning's post-B1-fix run — assumed
+  Treg's cure is permanent, for every patient, forever. That was never a placeholder waiting on
+  data: the h-sweep work of 2026-08-05 had already recorded `DEFAULT_RELAPSE_DURATION_YEARS <- 10`
+  as the base-case anchor (PolTREG's 7–12 year plateau; "nothing published supports permanence"),
+  had already built `duration_to_hazard()` to convert it, and `R/03_cure_fraction_module.R`'s own
+  docstring already said in as many words that *zero relapse hazard is the single most favourable
+  assumption available to the intervention*. The sweep was built as an add-on and the functions
+  that actually produce results were never switched over — and this file recorded that at the time
+  as a feature ("No existing function's default behaviour changed — every prior call site with
+  `relapse_hazard_annual` left implicit still gets 0", in the h-sweep entry above; that sentence is
+  the bug, stated approvingly). All four defaults are now
+  `duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)`. h = 0 is still reachable by passing it
+  explicitly, which is what `headroom_frontier_by_duration()`'s T = ∞ row already does — an
+  explicitly labelled upper bound inside a sweep, which is the honest place for it.
+- **The PSA half, as reported.** `run_psa()` now draws h per iteration from a **Gamma**
+  distribution — the standard health-economics convention for a *rate*, as against a probability
+  (Beta) or a multinomial row (Dirichlet): Briggs, Claxton & Sculpher, *Decision Modelling for
+  Health Economic Evaluation* (Oxford University Press, 2006), §4.3 — with its **mean fixed at
+  ln 2 / 10 = 0.0693/yr**, the same anchor the deterministic default now uses, so the PSA is the
+  stochastic counterpart of the deterministic base case by construction rather than a second
+  independently-maintained centre (A16's lesson, applied to a parameter nobody had checked it
+  against). Shape 2 (CV = 0.71) implies a median SDR duration of **11.9 years**, an interquartile
+  range of **7.4–20.8 years**, and puts the sweep grid's pessimistic endpoint T = 2 years at the
+  99.95th percentile — present in the tail, not in the body. Shape > 1 forces the density to zero
+  at h = 0, so permanence has probability zero under the prior; an Exponential (shape 1) would
+  instead make near-permanence the single modal outcome, which is the anti-conservative framing
+  this whole item exists to correct. The one thing the choice cannot fix, stated rather than
+  buried: ~26% of draws still imply T > 20 years, because in hazard space the sweep grid is
+  asymmetric about its own anchor (T = 2 is 5× the anchor hazard, T = 20 only 0.5×), so *no*
+  mean-anchored distribution can bracket the pessimistic endpoint without a substantial optimistic
+  tail. Tightening the shape buys a smaller optimistic tail only by never drawing T = 2 at all. The
+  deterministic T sweep therefore stays the primary, prior-free presentation of durability
+  uncertainty; the PSA characterises it. Full derivation on `sample_relapse_hazard_draws()`.
+- **Aim 3, answerable for the first time.** `R/07_evpi_evppi.R` gains subsets **B** and **A∪B**
+  (analysis_plan.md §9.3's own "durability block"), and the all-sampled-parameters row becomes
+  A∪B∪C∪E. `evppi_prior_sensitivity()`/`prior_reweight()` were checked and deliberately left
+  reweighting on π alone: π and h are sampled independently, so the joint density factorises and
+  every non-π factor cancels exactly out of the importance weight — a derivation, now written out
+  on `prior_reweight()`, not an assumption. A new `evppi_convergence_subset_B.csv` checks B's own
+  convergence, since a converged subset A says nothing about whether a much smaller subset B is a
+  real number, and Aim 3 rests on B being real.
+
+**What moves, and by how much** (300-draw lifetime-horizon verification run, not the authoritative
+10,000-draw one — Eric runs that separately; these are the direction and rough magnitude to
+expect): required durable cure fraction π\* at Treg's sourced acquisition price rises from
+**27.5% / 20.5% / 16.8%** to **72.4% / 54.3% / 44.6%** at WTP $50k / $100k / $150k — still feasible
+at all three thresholds, but a materially harder target than this morning's figures. Deterministic
+EJP at π = 1, WTP $150k falls from $99,995 to $40,077; probabilistic EJP median at $150k falls from
+$49,631 to ≈$24,100, still comfortably above the $19,917 sourced price. EVPPI at WTP $150k: subset
+A (π) $2,563, **subset B (h) $947**, **durability block A∪B $3,277 = 93% of total EVPI**, against
+cost block C (Treg price) $365 = 10%. **The durability block carries roughly an order of magnitude
+more EVPPI than the cost block, and h alone still outranks price** — that is Aim 3's falsifiable
+question, answered, where before it could not be posed. (The A∪B∪C∪E row scores *below* its own
+subsets; that is the PCA-dilution artifact already documented on `evppi_by_subset()` — 8 raw
+parameters compressed into 2 components — not a new finding. A∪B is 2 raw dimensions and is left
+unreduced, which is why it is the trustworthy row to lead with.)
+
+**What does not move.** `base_case_results.csv`, `base_case_results_by_horizon.csv`,
+`refractory_scenario_results.csv` and the S12 table are **bit-identical**, because they report Treg
+only at π = 0: `run_treg_arm()` seeds the SDR track with `remission_mass * π` and every subsequent
+update multiplies that mass, so at π = 0 no relapse hazard can change the trace. Those call sites
+keep their explicit `relapse_hazard_annual = 0`, with the reasoning recorded inline so a future
+reader doesn't "fix" them, and a test asserts the inertness to exact equality rather than leaving
+it as an argument. Every UST/IFX/ADA figure everywhere is likewise untouched — h reaches the model
+only through Treg's own SDR state, which no comparator arm has — as is
+`headroom_frontier_by_duration.csv`, which always passed T explicitly.
+
+Full test suite: **891 assertions across 226 tests, 0 failures** — this change contributes +74
+assertions and +10 tests, measured against `main` at `953bf6a` (817/216, i.e. after the R2 entry
+below merged; this branch was rebased onto it rather than onto `32c417f`). Three tests
+existed only to check the default against itself and so could never have caught this; the new ones
+check it against a sourced value and against the value it used to be. Two pre-existing tests had to
+change: one asserted T = ∞ reproduces `headroom_frontier()`'s *default* (now correctly two
+different things, so it passes h = 0 explicitly), and one passed `0` positionally into
+`run_treg_arm_lifetime()`'s hazard slot while checking a function whose default had moved — the
+same class of mistake as B3 itself, now passed by name. One assertion was removed rather than
+re-tuned: `evppi <= total_evpi` on the 250-draw 6.15-year fixture, where TREG now wins ~1.6% of
+draws so total EVPI is ~$13 against GAM estimation error of tens of dollars — it had been passing
+by margin, not because the property held for the estimator at that sample size. It is re-sited on a
+new synthetic fixture whose net benefit depends on π and h by construction (NB = $30k · π ·
+e^(−8h)), which also serves as the positive control for the new subsets: A∪B recovers 99.96% of
+that fixture's total EVPI, exactly as it must. `analysis/run_full_analysis.R` was deliberately
+**not** re-run end to end here.
 
 **R2 sensitivity check landed (2026-08-06), same day, while B3 was being worked in parallel —
 `docs/model_audit_v6.md` A18.** Peer review 2026-08-05 flagged that Aliyev's Surgery-state

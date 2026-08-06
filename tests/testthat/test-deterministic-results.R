@@ -118,8 +118,16 @@ test_that("headroom_pi_star's root, where one exists, actually satisfies the NMB
   expect_true(res$feasible)
   expect_true(res$pi_star > 0 && res$pi_star < 1)  # a genuine interior root, not a boundary case
 
-  treg_at_root <- run_treg_arm_lifetime(HORIZON_CYCLES_6YR, res$pi_star, 0, 5000, matrices,
-                                         raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  # The relapse hazard must be re-stated here to match whatever headroom_pi_star() itself used --
+  # i.e. its own default, the 10-year anchor since 2026-08-06 (B3). This argument is passed by
+  # NAME, not positionally as it once was: the old positional `0` in this slot silently became a
+  # different assumption from the function under test the moment that default changed, which is
+  # the same class of mistake B3 itself was.
+  treg_at_root <- run_treg_arm_lifetime(
+    HORIZON_CYCLES_6YR, res$pi_star,
+    relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
+    price_usd = 5000, matrices = matrices, raw_dir = RAW_DIR, proc_dir = PROC_DIR
+  )
   expect_equal(net_monetary_benefit(treg_at_root, 150000), target_nmb, tolerance = 1e-3)
 })
 
@@ -250,6 +258,70 @@ test_that("a shorter median SDR duration T (higher relapse hazard) requires a hi
   expect_true(pessimistic$pi_star > optimistic$pi_star)
 })
 
+test_that("headroom_pi_star's DEFAULT relapse hazard is the 10-year anchor, not 0 -- the regression test for B3's deterministic half", {
+  # B3 (peer review 2026-08-05, docs/model_audit_v6.md A19) was two defects wearing one name. The
+  # PSA half (h never sampled) is tested in test-psa.R. THIS is the deterministic half: the h sweep
+  # tooling landed 2026-08-05 with DEFAULT_RELAPSE_DURATION_YEARS <- 10 recorded as the base-case
+  # anchor, but headroom_pi_star()/headroom_frontier()/ejp_deterministic()/ejp_frontier() kept
+  # defaulting to h = 0, so every headline number was computed assuming a permanent cure. Nothing
+  # in the suite caught it, because every h-aware test passed h explicitly and every other test
+  # only ever compared the default against itself. This test compares the default against a
+  # SOURCED value and against the value it used to be.
+  price <- 5000
+  default_result <- headroom_pi_star(price, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  at_anchor <- headroom_pi_star(price, wtp_usd = 150000,
+                                 relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
+                                 raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  at_zero <- headroom_pi_star(price, wtp_usd = 150000, relapse_hazard_annual = 0,
+                               raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+
+  # The default IS the anchor...
+  expect_equal(default_result$pi_star, at_anchor$pi_star)
+  expect_equal(default_result$qaly_gain, at_anchor$qaly_gain)
+  # ...and is NOT the old permanent-cure assumption. Asserted as a strict inequality in the
+  # correct direction, not merely as inequality: a decaying cure is worth less, so it takes a
+  # LARGER cure fraction to break even at the same price.
+  expect_true(at_zero$feasible && default_result$feasible)
+  expect_true(default_result$pi_star > at_zero$pi_star)
+  expect_false(isTRUE(all.equal(default_result$pi_star, at_zero$pi_star)))
+
+  # headroom_frontier() must default identically -- it forwards to headroom_pi_star() per price
+  # point, and a divergence between the two defaults would silently make the frontier and the
+  # single-point headline number two different curves.
+  price_grid <- c(2000, 5000)
+  frontier_default <- headroom_frontier(price_grid, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  expect_equal(unique(frontier_default$relapse_hazard_annual),
+                duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS))
+  expect_equal(frontier_default$pi_star[frontier_default$price_usd == price], at_anchor$pi_star)
+})
+
+test_that("the relapse hazard is structurally inert at pi = 0, so run_base_case()'s explicit h = 0 is not a stale default", {
+  # run_base_case() (and run_refractory_scenario(), and S12) still pass relapse_hazard_annual = 0
+  # explicitly at pi_sdr = 0, and their comments claim that is provably harmless rather than an
+  # oversight left behind by B3's fix. This asserts the claim instead of trusting the comment: with
+  # pi = 0 the SDR track is seeded with remission_mass * 0 and every subsequent update multiplies
+  # that mass, so no h can ever change the trace. Checked to exact floating-point equality, since
+  # the argument is that the arithmetic is literally identical, not merely close.
+  matrices <- build_all_transition_matrices(RAW_DIR)
+  hazards <- c(0, duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS), duration_to_hazard(2), 5)
+  at_pi_zero <- lapply(hazards, function(h) {
+    run_treg_arm_lifetime(HORIZON_CYCLES_6YR, pi_sdr = 0, relapse_hazard_annual = h,
+                           price_usd = 15000, matrices = matrices, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  })
+  for (i in seq_along(hazards)[-1]) {
+    expect_identical(at_pi_zero[[i]]$qalys, at_pi_zero[[1]]$qalys, info = paste("h =", hazards[i]))
+    expect_identical(at_pi_zero[[i]]$total_cost, at_pi_zero[[1]]$total_cost, info = paste("h =", hazards[i]))
+  }
+
+  # The converse, so this isn't passing because the hazard is broken everywhere: at pi > 0 the
+  # very same comparison must show a real difference.
+  at_pi_half <- lapply(c(0, duration_to_hazard(2)), function(h) {
+    run_treg_arm_lifetime(HORIZON_CYCLES_6YR, pi_sdr = 0.5, relapse_hazard_annual = h,
+                           price_usd = 15000, matrices = matrices, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  })
+  expect_true(at_pi_half[[1]]$qalys - at_pi_half[[2]]$qalys > 1e-4)
+})
+
 test_that("headroom_frontier_by_duration stacks one full headroom_frontier() per duration, each tagged correctly", {
   price_grid <- c(1000, 5000, 10000)
   duration_grid <- c(5, 10, Inf)
@@ -258,9 +330,13 @@ test_that("headroom_frontier_by_duration stacks one full headroom_frontier() per
 
   expect_equal(nrow(surf), length(price_grid) * length(duration_grid))
   expect_setequal(surf$duration_years, duration_grid)
-  # T = Inf (permanent remission, h = 0) should reproduce headroom_frontier()'s own h = 0 default
+  # T = Inf (permanent remission) should reproduce an EXPLICIT h = 0 headroom_frontier() call
   # exactly -- same underlying computation, just reached through duration_to_hazard(Inf) = 0.
-  direct <- headroom_frontier(price_grid, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
+  # `relapse_hazard_annual = 0` has to be passed explicitly here as of 2026-08-06 (B3): the
+  # function's default is no longer 0 but the 10-year anchor, so leaving it implicit would compare
+  # the T = Inf row against the T = 10 base case and (correctly) fail.
+  direct <- headroom_frontier(price_grid, wtp_usd = 150000, relapse_hazard_annual = 0,
+                               raw_dir = RAW_DIR, proc_dir = PROC_DIR)
   from_surface <- surf[surf$duration_years == Inf, ]
   expect_equal(from_surface$pi_star[order(from_surface$price_usd)], direct$pi_star[order(direct$price_usd)])
 

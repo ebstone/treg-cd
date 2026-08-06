@@ -321,6 +321,10 @@ run_scenario_s12_non_cured_hr <- function(n_cycles = HORIZON_CYCLES_6YR,
   treg_price <- load_treg_dose_acquisition_cost(proc_dir)
 
   rows <- lapply(hazard_ratio_grid, function(hr) {
+    # `relapse_hazard_annual = 0`: structurally inert at pi_sdr = 0 (no patient ever enters SDR,
+    # so nothing can relapse out of it) -- the same explicitly-left-alone case as
+    # run_base_case()'s own Treg call, whose comment (R/05_deterministic_results.R) has the full
+    # argument and the reason not to "correct" it to the 2026-08-06 base-case default.
     s <- run_treg_arm_lifetime(
       n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
       weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
@@ -370,6 +374,8 @@ run_scenario_r2_surgery_sensitivity <- function(n_cycles = HORIZON_CYCLES_6YR,
 
   run_grid <- function(matrices, surgery_source) {
     rows <- lapply(hazard_ratio_grid, function(hr) {
+      # `relapse_hazard_annual = 0`: inert at pi_sdr = 0, exactly as in S12 above (which this
+      # scenario re-runs) -- see that call's own comment and run_base_case()'s in R/05.
       s <- run_treg_arm_lifetime(
         n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price,
         matrices = matrices, weight_kg = weight_kg, cycle_weeks = cycle_weeks,

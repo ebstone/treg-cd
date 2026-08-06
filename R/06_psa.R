@@ -12,6 +12,11 @@
 # fabricating a distribution nobody has sourced yet -- see "Not yet implemented" below. This is
 # the same incremental-pass discipline R/04 and R/05 were each built under.
 #
+# SECOND PASS, 2026-08-06 (peer review 2026-08-05, B3; docs/model_audit_v6.md A19). The post-cure
+# relapse hazard h is now sampled too (point 4 below), not hardcoded to 0. **Every probabilistic
+# number this module has ever produced is superseded by that change** -- see A19 and README.md's
+# Status section.
+#
 # ---- What's sampled, and where its distribution actually comes from ------------------------------
 #
 # 1. **The utility chain** (Remission + the 4 multiplicative ratios; analysis_plan.md §7.1 items
@@ -39,6 +44,19 @@
 #    the right reading of that column, not a guess.
 # 3. **Cure fraction pi**: Uniform(0, 1), per Decision 4's own recorded fallback (above). Not this
 #    pass's invention -- literally the recorded decision when elicitation didn't run.
+# 4. **Post-cure relapse hazard h** (added 2026-08-06, B3): Gamma with mean fixed at
+#    `duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)` = ln(2)/10 = 0.0693/yr -- the SAME
+#    10-year median-SDR-duration anchor R/05_deterministic_results.R's headroom functions and
+#    R/08_ejp.R's EJP functions now take as their deterministic default (same commit), so this
+#    module's prior mean reproduces the deterministic base case by construction rather than being
+#    a separately-maintained centre (the same discipline A16's resolution imposed on the utility
+#    chain). Gamma, not Uniform or Beta, because h is a RATE: Briggs, Claxton & Sculpher,
+#    *Decision Modelling for Health Economic Evaluation* (Oxford University Press, 2006), §4.3 --
+#    Beta for a probability, Dirichlet for a multinomial transition row, Gamma for a rate or a
+#    cost, all of which this module now uses in exactly those roles. Shape and the spread argument
+#    are on sample_relapse_hazard_draws() below, which also states what the chosen shape implies
+#    in T-years at each percentile and why that band is defensible against
+#    RELAPSE_DURATION_GRID_YEARS.
 #
 # ---- Not yet implemented in this pass -------------------------------------------------------------
 #
@@ -52,9 +70,16 @@
 #   no-longer-used derivation path, not something that maps onto Table 3/4's rows). Wiring this in
 #   needs either the underlying trial sample sizes or a documented, defensible precision assumption
 #   -- neither exists yet.
-# - **Post-cure relapse hazard h.** No numeric value, range, or fallback is recorded anywhere for
-#   h (unlike pi, which has Decision 4's explicit fallback) -- held fixed at 0 in this pass, same
-#   choice R/05_deterministic_results.R's headroom functions already make, for the same reason.
+# - ~~**Post-cure relapse hazard h.**~~ **Now sampled (2026-08-06, B3)** -- point 4 above. The
+#   original reason for holding it fixed ("no numeric value, range, or fallback is recorded
+#   anywhere for h, unlike pi") stopped being true on 2026-08-05, when the h sweep landed
+#   `DEFAULT_RELAPSE_DURATION_YEARS <- 10` and `RELAPSE_DURATION_GRID_YEARS <- c(2, 5, 10, 20,
+#   Inf)` (R/05_deterministic_results.R) as this project's recorded, PolTREG-anchored durability
+#   assumption; this module simply never picked them up. That gap is what B3 named, and holding h
+#   at 0 was not a neutral placeholder: zero relapse is the single MOST favourable assumption
+#   available to the intervention (R/03_cure_fraction_module.R's duration_to_hazard() docstring),
+#   so every PSA/EVPI/EVPPI/probabilistic-EJP figure produced before this change was computed
+#   assuming Treg's cure is permanent for every one of its 10,000 draws.
 # - **UST/IFX/ADA current drug prices** (item 14: "Re-extract... Gamma", status not yet done) and
 #   **health-state monitoring/Surgery/CT-drug costs** (items 16-18): no PSA range is sourced for
 #   any of these under the CURRENT CMS-pricing/Aliyev-inflation basis this project actually uses.
@@ -156,6 +181,96 @@ sample_treg_price_draws <- function(n_draws, proc_dir = "data/processed") {
   stats::rgamma(n_draws, shape = g$shape, scale = g$scale)
 }
 
+# ---- Post-cure relapse hazard draws (EVPPI subset B; peer review 2026-08-05's B3) ---------------
+
+#' Shape parameter of the Gamma prior on the post-cure annual relapse hazard h. Exposed as a named
+#' constant, not buried in sample_relapse_hazard_draws()'s signature, for the same reason
+#' PI_PRIOR_SENSITIVITY_SPECS (R/07_evpi_evppi.R) exists: the LEVEL of a VOI result depends on the
+#' prior's spread, so the spread has to be a visible, re-runnable modelling choice a reviewer can
+#' vary, not a magic number. See sample_relapse_hazard_draws() for why 2.
+RELAPSE_HAZARD_PSA_GAMMA_SHAPE <- 2
+
+#' `n_draws` Gamma draws for the post-cure annual relapse hazard h -- run_treg_arm_lifetime()'s
+#' `relapse_hazard_annual` argument, which R/03_cure_fraction_module.R then converts to a per-cycle
+#' relapse probability. Parameterised by (mean, shape) rather than (shape, rate) because the mean
+#' is the part with an actual anchor behind it and the shape is the part being ASSUMED; writing it
+#' this way keeps the assumption in the signature instead of dissolved into a rate constant.
+#'
+#' ---- Why Gamma ------------------------------------------------------------------------------
+#'
+#' h is a rate (events per year), not a probability and not a multinomial row. The standard
+#' health-economics PSA convention for a rate is a Gamma distribution -- Briggs, Claxton &
+#' Sculpher, *Decision Modelling for Health Economic Evaluation* (Oxford University Press, 2006),
+#' §4.3 -- for two reasons that both matter here: it has support on (0, Inf), matching the
+#' parameter's own domain with no truncation or rejection step, and it is the conjugate form for
+#' a Poisson event count, which is what a relapse process observed over person-time actually is.
+#' The alternatives are wrong for the parameter type, not merely less conventional: a Beta would
+#' impose an upper bound of 1 that has no meaning for a rate, and a Uniform over some [lo, hi]
+#' would need two invented endpoints instead of one invented spread parameter.
+#'
+#' ---- Why the mean is fixed at ln(2)/10 -------------------------------------------------------
+#'
+#' `mean_hazard` defaults to `duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)` = ln(2)/10 =
+#' 0.06931/yr, i.e. a median Sustained Deep Remission duration of 10 years. That is this project's
+#' already-recorded base-case anchor (R/05_deterministic_results.R's own comment on
+#' RELAPSE_DURATION_GRID_YEARS: the PolTREG T1D cohort supports a multi-year plateau in a subset
+#' out to 7-12 years, but nothing published supports permanence), and as of the same commit it is
+#' also the deterministic default in headroom_pi_star()/headroom_frontier() (R/05) and
+#' ejp_deterministic()/ejp_frontier() (R/08). Fixing the PSA's MEAN there -- not its median or its
+#' mode -- makes the probabilistic analysis the stochastic counterpart of the deterministic one by
+#' construction, which is exactly the property A6 (docs/model_audit_v6.md) found the v6 workbook's
+#' own PSA lacked. No new number is introduced by this function: the only thing being assumed here
+#' that wasn't already assumed somewhere in this repository is the shape.
+#'
+#' ---- Why shape = 2, and what it implies in years ---------------------------------------------
+#'
+#' Shape k fixes the coefficient of variation at 1/sqrt(k) once the mean is pinned (Gamma sd =
+#' mean/sqrt(k)); k = 2 gives CV = 0.71. Translated back into the units this project actually
+#' reasons about via hazard_to_duration(), T = ln(2)/h, the implied median SDR duration at each
+#' percentile of the sampled h is:
+#'
+#'   h percentile:   2.5th    25th    50th    75th    97.5th   99.5th   99.9th
+#'   implied T:      82.6yr   20.8yr  11.9yr  7.4yr   3.6yr    2.7yr    2.2yr
+#'
+#' (h's LOW percentiles are T's HIGH ones -- a small hazard is a long remission.) Read against
+#' RELAPSE_DURATION_GRID_YEARS = c(2, 5, 10, 20, Inf), the deterministic sweep this project
+#' already committed to: the interquartile range [7.4, 20.8] brackets the 10-year anchor and its
+#' two immediate neighbours on the grid; the sweep's pessimistic endpoint T = 2 sits at the
+#' 99.95th percentile of h, so a 10,000-draw PSA draws roughly 5 iterations more pessimistic than
+#' the pessimistic end of the sweep -- present in the tail, as it should be, without the prior
+#' pretending 2-year durability is a central expectation. The median of 11.9 years is inside
+#' PolTREG's own 7-12 year observation window, which is the closest thing to an external anchor
+#' this parameter has (tests/testthat/test-external-validity.R asserts exactly that).
+#'
+#' Shape > 1 is doing real work at the other end and is not just a spread choice: the Gamma density
+#' vanishes at h = 0 for any k > 1, so T = Inf (permanent cure, the Ovasave/CATS1-style upper
+#' bound) has probability zero under this prior. An Exponential (k = 1) would instead put its
+#' MODAL density at h = 0 -- i.e. treat near-permanence as the single most likely outcome, which is
+#' precisely the anti-conservative framing `docs/treg-cd_decision_resolutions_2026-08-05.md` §3.3
+#' corrected and B3 found still live in this module.
+#'
+#' ---- The tension this choice cannot resolve, stated rather than hidden ------------------------
+#'
+#' 26% of draws imply T > 20 years, more optimistic-tail mass than one would ideally assign given
+#' that nothing published supports permanence. That is not a tuning failure; it is structural. In
+#' hazard space the sweep grid is badly asymmetric about its own anchor -- T = 2 is 5x the anchor
+#' hazard while T = 20 is only 0.5x it -- so NO distribution with mean h0 can put T = 2 at a
+#' conventional upper tail percentile without simultaneously putting at least a quarter of its mass
+#' below h0/2. Tightening the shape buys a smaller optimistic tail only by abandoning the
+#' pessimistic endpoint entirely (at k = 4, T = 2 sits beyond the 99.99th percentile and is never
+#' drawn at 10,000 iterations). k = 2 is the deliberate compromise: keep the pessimistic endpoint
+#' inside the sampled support, accept the optimistic tail, and continue to report the DETERMINISTIC
+#' T sweep (headroom_frontier_by_duration(), R/05) as the primary, prior-free presentation of
+#' durability uncertainty -- the PSA characterises it, the sweep displays it. The same
+#' level-vs-ranking caveat R/07_evpi_evppi.R's evppi_prior_sensitivity() states for pi applies
+#' verbatim to subset B: the ranking of subsets is the finding, the level is prior-dependent.
+sample_relapse_hazard_draws <- function(n_draws,
+                                         mean_hazard = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
+                                         shape = RELAPSE_HAZARD_PSA_GAMMA_SHAPE) {
+  stopifnot(n_draws >= 0, mean_hazard > 0, shape > 0)
+  stats::rgamma(n_draws, shape = shape, scale = mean_hazard / shape)
+}
+
 # ---- Dirichlet sampling (general utility, not yet wired to any real matrix -- see module header) --
 
 #' Sample one row of a transition matrix from a Dirichlet distribution with mean `probs` and
@@ -180,19 +295,28 @@ sample_dirichlet_row <- function(n_draws, probs, concentration) {
 
 # ---- Orchestration ------------------------------------------------------------------------------
 
-#' Run the full PSA: `n_draws` iterations, each sampling the utility chain, Treg's price, and pi
-#' (Uniform(0,1), Decision 4's fallback -- module header), then running all four arms
+#' Run the full PSA: `n_draws` iterations, each sampling the utility chain, Treg's price, pi
+#' (Uniform(0,1), Decision 4's fallback -- module header) and the post-cure relapse hazard h
+#' (Gamma, sample_relapse_hazard_draws() -- added 2026-08-06, B3), then running all four arms
 #' (UST/IFX/ADA/CT-backed comparators plus TREG) through R/05_deterministic_results.R's arm
 #' runners with that draw's utility vector applied consistently across every arm. Everything else
-#' (transition matrices, relapse hazard h = 0, non-Treg costs) is held fixed at its deterministic
-#' base-case value -- see module header for why each is deferred rather than sampled.
+#' (transition matrices, non-Treg costs) is held fixed at its deterministic base-case value -- see
+#' module header for why each is deferred rather than sampled.
+#'
+#' The four sampled quantities are drawn in the order utility chain -> price -> pi -> h, and h was
+#' appended LAST deliberately: for any fixed `seed`, every draw of the three parameters that were
+#' already sampled before B3 is bit-for-bit what it was before h existed, so any difference between
+#' a pre-B3 and post-B3 run at the same seed is attributable to h alone and not to the RNG stream
+#' having been reshuffled underneath it.
 #'
 #' `seed` defaults to a fixed value for reproducibility -- analysis_plan.md doesn't specify one,
 #' so this is a documented modelling choice, not an attempt to hide seed-sensitivity; pass `NULL`
 #' to disable and get a fresh draw set each call.
 #'
 #' Returns one row per (draw, arm): draw index, intervention, qalys, total_cost, that draw's
-#' sampled pi and treg_price (NA for the three comparators, which don't depend on either), and
+#' sampled pi, treg_price and relapse_hazard_annual (all three NA for the three comparators, which
+#' don't depend on any of them -- the relapse hazard reaches the model only through Treg's own
+#' SDR track, R/03_cure_fraction_module.R, so a comparator arm's trace is untouched by it), and
 #' that draw's 5 raw sampled utility-chain values (util_modsev/util_resp/util_mild/
 #' util_remission/util_surgery, same variable_name convention as
 #' data/processed/model_health_utilities.csv) -- recorded on EVERY row, comparators included,
@@ -221,14 +345,19 @@ sample_dirichlet_row <- function(n_draws, probs, concentration) {
 #' would otherwise be `n_draws` x 3 full lifetime Markov simulations (the dominant cost of a
 #' lifetime-horizon PSA, since each one re-derives an age-adjusted matrix pair every one of
 #' HORIZON_CYCLES_LIFETIME cycles once `baseline_age` is supplied) down to 3, regardless of
-#' `n_draws`. TREG is NOT hoisted this way: its occupancy trace genuinely varies per draw (pi
-#' varies), so it still simulates once per draw. `verify_pi_factorization()`
-#' (R/05_deterministic_results.R) already establishes that Treg's trace is exactly linear in pi
-#' at this project's current fixed relapse hazard (h = 0, not PSA-sampled) -- collapsing Treg's
-#' per-draw simulation to a handful of reference runs plus per-draw linear interpolation is the
-#' next optimisation this leaves on the table, flagged rather than attempted here (a correctness-
-#' sensitive change this pass had no R toolchain available to verify against the test suite,
-#' README.md's Status section).
+#' `n_draws`. TREG is NOT hoisted this way: its occupancy trace genuinely varies per draw (pi and,
+#' since 2026-08-06, h both vary), so it still simulates once per draw.
+#'
+#' **The pi-interpolation optimisation this used to flag is no longer available, and that is worth
+#' recording rather than silently dropping.** `verify_pi_factorization()`
+#' (R/05_deterministic_results.R) establishes that Treg's QALY gain is exactly linear in pi AT A
+#' FIXED h -- g(h) is a per-h constant, so the shortcut was "simulate pi=0 and pi=1 once, then
+#' interpolate every draw." Sampling h breaks that: each draw now needs its own g(h), so the
+#' reference runs would have to be recomputed per distinct h, of which there are `n_draws`. The
+#' factorisation itself is unaffected (it was never a claim about h), only its usefulness as a
+#' shortcut here. A future pass wanting it back would have to interpolate g(h) over an h grid and
+#' demonstrate the interpolation error is negligible against the QALY differences being reported --
+#' a real piece of numerical work, not a code tidy-up.
 run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                      cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
                      raw_dir = "data/raw", proc_dir = "data/processed", seed = 20260805,
@@ -239,6 +368,8 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
   utility_draws <- sample_utility_chain_draws(n_draws, proc_dir)
   price_draws <- sample_treg_price_draws(n_draws, proc_dir)
   pi_draws <- stats::runif(n_draws, 0, 1)
+  # Drawn last on purpose -- see this function's own docstring on why the RNG order matters.
+  relapse_hazard_draws <- sample_relapse_hazard_draws(n_draws)
 
   # Load once, reuse across all n_draws x 4-arm calls below (run_comparator_arm_lifetime()'s and
   # run_treg_arm_lifetime()'s own caching parameters, added alongside this module) -- none of
@@ -294,17 +425,19 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
       s <- summarise_arm(attached, induction_cost = induction_costs[[tx]])
       k <- k + 1
       rows[[k]] <- c(list(draw = i, intervention = tx, qalys = s$qalys, total_cost = s$total_cost,
-                           pi_sdr = NA_real_, treg_price = NA_real_), util_cols)
+                           pi_sdr = NA_real_, treg_price = NA_real_,
+                           relapse_hazard_annual = NA_real_), util_cols)
     }
 
-    treg <- run_treg_arm_lifetime(n_cycles, pi_draws[i], relapse_hazard_annual = 0, price_draws[i],
+    treg <- run_treg_arm_lifetime(n_cycles, pi_draws[i], relapse_hazard_draws[i], price_draws[i],
                                    matrices, weight_kg, cycle_weeks, annual_rate, cap_cycle = cap_cycle,
                                    apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
                                    utilities = utilities_i, induction_data = induction_data, prices = prices,
                                    baseline_age = baseline_age, life_table = life_table)
     k <- k + 1
     rows[[k]] <- c(list(draw = i, intervention = "TREG", qalys = treg$qalys, total_cost = treg$total_cost,
-                         pi_sdr = pi_draws[i], treg_price = price_draws[i]), util_cols)
+                         pi_sdr = pi_draws[i], treg_price = price_draws[i],
+                         relapse_hazard_annual = relapse_hazard_draws[i]), util_cols)
   }
 
   do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE))

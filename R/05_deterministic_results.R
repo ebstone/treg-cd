@@ -23,6 +23,22 @@
 # pi and h; headroom_pi_star()/headroom_frontier() below are what carry the paper in the meantime,
 # exactly as Decision 4 recommends.
 #
+# **h is the exception to that, and was mishandled until 2026-08-06 (peer review's B3,
+# docs/model_audit_v6.md A19).** Decision 4's "no numeric value" holds for pi, which genuinely has
+# none. It stopped holding for h on 2026-08-05, when the h sweep landed
+# DEFAULT_RELAPSE_DURATION_YEARS <- 10 (below) as this project's recorded, PolTREG-anchored
+# base-case median SDR duration. But headroom_pi_star()/headroom_frontier() here -- and
+# ejp_deterministic()/ejp_frontier() in R/08 -- kept defaulting `relapse_hazard_annual = 0`, so
+# every headline number this file produced was computed as though Treg's cure were permanent for
+# every patient forever. That is not a neutral placeholder and not "conservative": zero relapse
+# hazard is the single MOST favourable assumption available to the intervention
+# (R/03_cure_fraction_module.R's duration_to_hazard() docstring says so at length, and said so
+# already while these defaults sat at 0 -- the sweep tooling was built as an add-on and the
+# functions that actually produce results were never switched over). All four defaults are now
+# duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS), and R/06_psa.R samples h per draw around the
+# same anchor. Every Treg-involving number produced before 2026-08-06 is superseded; the pi=0 rows
+# are the sole exception, for the structural reason recorded at run_base_case()'s own Treg call.
+#
 # ---- Horizon: lifetime, now implemented (2026-08-05) -----------------------------------------
 #
 # analysis_plan.md §4.1 recommends a LIFETIME horizon (6.15-year and 10-year as comparability
@@ -129,6 +145,17 @@ WTP_THRESHOLDS_USD <- c(50000, 100000, 150000)
 #' to an annual hazard via duration_to_hazard() at the point of use, not stored as hazards here,
 #' so this grid stays in the units a reader reasons about.
 RELAPSE_DURATION_GRID_YEARS <- c(2, 5, 10, 20, Inf)
+
+#' The base-case anchor itself, in the units this project reports (years of median SDR duration).
+#' Since 2026-08-06 (B3, docs/model_audit_v6.md A19) this is not merely the centre of the sweep
+#' grid but the actual default relapse assumption behind every deterministic headline number:
+#' `duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)` is the default `relapse_hazard_annual` of
+#' headroom_pi_star()/headroom_frontier() below and of ejp_deterministic()/ejp_frontier()
+#' (R/08_ejp.R), and the mean of R/06_psa.R's Gamma prior on h. Before that date all four
+#' defaulted to 0 (permanent cure) while this constant sat here unused by any of them -- the
+#' defect B3 named. Changing this constant therefore now moves published results, not just one
+#' row of a sensitivity table; it is a base-case parameter, and the sweep across
+#' RELAPSE_DURATION_GRID_YEARS above is what reports sensitivity to it.
 DEFAULT_RELAPSE_DURATION_YEARS <- 10
 
 COMPARATOR_THERAPIES <- c("UST", "IFX", "ADA")
@@ -494,6 +521,17 @@ run_base_case <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PAT
   )
 
   treg_price <- load_treg_dose_acquisition_cost(proc_dir)
+  # `relapse_hazard_annual = 0` here is NOT the pre-2026-08-06 permanent-cure default this
+  # function's sibling headroom/EJP functions were corrected away from (B3, module header) -- it is
+  # STRUCTURALLY INERT at pi_sdr = 0 and deliberately left explicit. run_treg_arm()
+  # (R/03_cure_fraction_module.R) seeds the SDR track with `remission_mass * pi_sdr`, which is
+  # exactly 0 at pi_sdr = 0, and its per-cycle update only ever multiplies that mass (`dying` and
+  # `relapsed` are both on_sdr[t] times something), so on_sdr stays identically 0 for the whole
+  # horizon and the relapse probability multiplies nothing. Any h whatsoever gives a bit-identical
+  # trace here; a test asserts this rather than leaving it as an argument
+  # (tests/testthat/test-deterministic-results.R). Do not "fix" this to the new default -- passing
+  # a non-zero h would falsely suggest the Null floor depends on the durability assumption, and
+  # would silently make this line's behaviour depend on a constant it is provably immune to.
   treg_summary <- run_treg_arm_lifetime(
     n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
     weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
@@ -561,6 +599,8 @@ run_refractory_scenario <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = A
       }),
       COMPARATOR_THERAPIES
     )
+    # `relapse_hazard_annual = 0`: structurally inert at pi_sdr = 0, same reasoning (and same
+    # do-not-"fix"-this warning) as run_base_case()'s own Treg call above.
     treg_summary <- run_treg_arm_lifetime(
       n_cycles, pi_sdr = 0, relapse_hazard_annual = 0, price_usd = treg_price, matrices = matrices,
       weight_kg = weight_kg, cycle_weeks = cycle_weeks, annual_rate = annual_rate,
@@ -595,7 +635,18 @@ run_refractory_scenario <- function(n_cycles = HORIZON_CYCLES_6YR, weight_kg = A
 #' run_comparator_arm_lifetime()'s equivalent parameters, threaded through to both the
 #' comparator summaries (if `comparator_summaries` isn't already supplied) and every
 #' treg_nmb_at_pi() evaluation below.
-headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
+#'
+#' `relapse_hazard_annual` defaults to `duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS)` --
+#' a median 10 years of drug-free remission, this project's PolTREG-anchored base case -- **not
+#' to 0, which is what it defaulted to before 2026-08-06 (B3, docs/model_audit_v6.md A19; see this
+#' module's own header)**. h = 0 means the cure never wanes for anyone, ever; it is the most
+#' favourable assumption available to Treg, not a cautious one, and pi* computed under it is
+#' correspondingly the most optimistic figure this function can return. It remains available by
+#' passing `relapse_hazard_annual = 0` explicitly (equivalently `duration_to_hazard(Inf)`), which
+#' is exactly what headroom_frontier_by_duration()'s T = Inf row does -- an explicitly-labelled
+#' upper bound in a sweep, which is the honest place for it, rather than a silent default.
+headroom_pi_star <- function(price_usd, wtp_usd,
+                              relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
                               n_cycles = HORIZON_CYCLES_6YR, matrices = NULL,
                               comparator_summaries = NULL, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                               cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
@@ -675,7 +726,11 @@ headroom_pi_star <- function(price_usd, wtp_usd, relapse_hazard_annual = 0,
 #' run_base_case()'s equivalent parameter -- scenario S2 (ADA excluded) passes
 #' `c("UST", "IFX")` here to see how the "next-best comparator" (best_comparator_nmb(), used
 #' inside headroom_pi_star()) and therefore pi* shift when ADA isn't in the comparator set.
-headroom_frontier <- function(price_grid_usd, wtp_usd, relapse_hazard_annual = 0,
+#' `relapse_hazard_annual`: same default and same 2026-08-06 change of it as headroom_pi_star()'s
+#' own -- see that function's docstring; this one just forwards whatever it's given, once per
+#' price point.
+headroom_frontier <- function(price_grid_usd, wtp_usd,
+                               relapse_hazard_annual = duration_to_hazard(DEFAULT_RELAPSE_DURATION_YEARS),
                                n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                                cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
                                raw_dir = "data/raw", proc_dir = "data/processed", baseline_age = NULL,

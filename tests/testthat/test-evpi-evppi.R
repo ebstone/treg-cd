@@ -18,6 +18,14 @@ source(repo_root_relative("R", "07_evpi_evppi.R"), local = TRUE)
 RAW_DIR <- repo_root_relative("data", "raw")
 PROC_DIR <- repo_root_relative("data", "processed")
 
+#' The full subset set evppi_by_subset() reports, kept in one place because three separate tests
+#' assert against it. Grew from 7 to 9 entries on 2026-08-06 (B3): B (the post-cure relapse
+#' hazard) and A u B (analysis_plan.md §9.3's "durability block", the row Aim 3's
+#' durability-vs-cost comparison is actually about) became computable once R/06_psa.R started
+#' sampling h, and the all-sampled-parameters row grew from `A u C u E` to `A u B u C u E`
+#' accordingly -- "all parameters" now means four blocks, not three.
+EXPECTED_EVPPI_SUBSETS <- c("A", "B", "C", "E", "A u B", "A u C", "A u E", "C u E", "A u B u C u E")
+
 test_that("evpi_from_nb is a simple, hand-computed formula", {
   # Draw 1: A wins (10 > 4); draw 2: B wins (8 > 2). Perfect foresight picks the winner each time
   # (mean 9); current information picks whichever has the higher AVERAGE (A: mean 6, B: mean 5).
@@ -130,17 +138,30 @@ test_that("evpi_surface's price override matches a manual net_benefit_matrix com
   expect_equal(surf$evpi_per_patient[1], evpi_from_nb(manual_nb))
 })
 
-test_that("evppi_by_subset returns all 7 expected subsets with sane, non-negative-ish values and correct dimension counts", {
+test_that("evppi_by_subset returns all 9 expected subsets with sane, non-negative-ish values and correct dimension counts", {
   psa <- run_psa(n_draws = 250, raw_dir = RAW_DIR, proc_dir = PROC_DIR, seed = 13)
   res <- evppi_by_subset(psa, wtp_usd = 100000)
 
-  expect_setequal(res$subset, c("A", "C", "E", "A u C", "A u E", "C u E", "A u C u E"))
+  expect_setequal(res$subset, EXPECTED_EVPPI_SUBSETS)
   expect_true(all(res$evppi >= -1e-6))                        # allow GAM estimation noise near 0
-  expect_true(all(res$evppi <= res$total_evpi + 1e-6))        # EVPPI can't exceed total EVPI
+  # NOTE, 2026-08-06: this test used to also assert `evppi <= total_evpi`, the exact-arithmetic
+  # ceiling. That assertion was removed here (and re-sited, properly scoped, in the synthetic
+  # non-degenerate fixture below) rather than merely re-tuned, because this fixture cannot support
+  # it. At the 6.15-year horizon this fixture runs at, TREG wins in only ~1.6% of draws, so total
+  # EVPI is ~$13 on a ~$370,000 NMB scale -- essentially a degenerate decision problem, where the
+  # GAM's own estimation error (tens of dollars at 250 draws) is several times the quantity it is
+  # being compared against. The check passed here before only because the pre-B3 PSA's total EVPI
+  # happened to be ~$127 rather than ~$13, i.e. by margin, not by the property actually holding
+  # for the estimator at this sample size. Asserting an exact inequality in a regime where the
+  # estimator's noise dominates the truth tests luck, not code. What this fixture IS good for --
+  # subset membership, dimension bookkeeping, sign, and internal consistency of `total_evpi`
+  # across rows -- is what it now checks.
   expect_equal(res$n_raw_params[res$subset == "A"], 1)
+  expect_equal(res$n_raw_params[res$subset == "B"], 1)
   expect_equal(res$n_raw_params[res$subset == "E"], 5)
   expect_equal(res$n_params_used[res$subset == "E"], 2)       # PCA-reduced
   expect_equal(res$n_params_used[res$subset == "A u C"], 2)   # not reduced (<= max_raw_dims)
+  expect_equal(res$n_params_used[res$subset == "A u B"], 2)   # ditto -- the durability block
   expect_true(all(res$total_evpi == res$total_evpi[1]))       # same reference EVPI on every row
 })
 
@@ -248,10 +269,16 @@ test_that("evppi_by_subset's weights argument is threaded consistently, and shri
   # columns (e.g. "C u E") PCA-reduce their raw matrix (reduce_for_gam()), and prcomp() itself
   # refuses to scale a genuinely zero-variance column -- a real constraint of that step, not
   # something this synthetic fixture should paper over by avoiding those subsets.
+  # relapse_hazard_annual: real Gamma draws from the production sampler, but deliberately NOT
+  # entered into treg_nmb above -- this fixture is about pi's prior, and h is here as a genuinely
+  # varying parameter that the decision does not depend on, so subset B should come out ~0 and
+  # subset A's behaviour under reweighting is what's being observed. (The fixture below is the one
+  # that makes the decision depend on h.)
   psa_toy <- data.frame(
     draw = rep(1:n, 2), intervention = rep(c("TREG", "COMP"), each = n), qalys = qalys_common,
     total_cost = c(wtp * qalys_common - treg_nmb, wtp * qalys_common - comp_nmb),
     pi_sdr = c(pi_vals, rep(NA_real_, n)), treg_price = c(jitter(15000), rep(NA_real_, n)),
+    relapse_hazard_annual = c(sample_relapse_hazard_draws(n), rep(NA_real_, n)),
     util_modsev = rep(jitter(0.5), 2), util_resp = rep(jitter(0.6), 2),
     util_mild = rep(jitter(0.7), 2), util_remission = rep(jitter(0.8), 2),
     util_surgery = rep(jitter(0.4), 2),
@@ -269,6 +296,78 @@ test_that("evppi_by_subset's weights argument is threaded consistently, and shri
   expect_true(all(res_weighted$total_evpi == res_weighted$total_evpi[1]))  # internally consistent
   expect_true(res_weighted$evppi[res_weighted$subset == "A"] < res_unweighted$evppi[res_unweighted$subset == "A"])
   expect_true(res_weighted$total_evpi[1] < res_unweighted$total_evpi[1])
+
+  # h varies here but the decision doesn't depend on it, so subset B must come out at essentially
+  # nothing -- the negative control for the new subset: it detects a wired-up-but-irrelevant
+  # parameter as irrelevant, rather than manufacturing value out of noise.
+  expect_true(res_unweighted$evppi[res_unweighted$subset == "B"] <
+                0.02 * res_unweighted$evppi[res_unweighted$subset == "A"])
+})
+
+test_that("subset B and the A u B durability block behave correctly when net benefit genuinely depends on both pi and h", {
+  # The positive control for B3's downstream half, and the one place in this suite where the
+  # durability block's arithmetic is checked against a KNOWN answer rather than against a real
+  # PSA whose true EVPPI nobody knows. Constructed so TREG's net benefit depends on the cure
+  # fraction AND on how long the cure lasts -- the multiplicative pi * g(h) form the real model
+  # actually has (R/05_deterministic_results.R's verify_pi_factorization() establishes that
+  # Treg's incremental QALY IS exactly pi * g(h)), with g(h) decreasing in h. So here
+  # NB_treg = 30000 * pi * exp(-h * 8), i.e. a cure worth $30k if permanent, discounted by how
+  # fast it decays; the comparator is flat. Both parameters matter, neither alone determines the
+  # decision, and the pair together determines it exactly (up to the small noise term).
+  set.seed(26)
+  n <- 1500
+  pi_vals <- stats::runif(n)
+  h_vals <- sample_relapse_hazard_draws(n)
+  wtp <- 100000
+  qalys_common <- 5
+  treg_nmb <- 30000 * pi_vals * exp(-h_vals * 8) + stats::rnorm(n, 0, 150)
+  comp_nmb <- rep(9000, n) + stats::rnorm(n, 0, 150)
+  jitter <- function(center) rep(center, n) + stats::rnorm(n, 0, 1e-6)
+
+  psa_toy <- data.frame(
+    draw = rep(1:n, 2), intervention = rep(c("TREG", "COMP"), each = n), qalys = qalys_common,
+    total_cost = c(wtp * qalys_common - treg_nmb, wtp * qalys_common - comp_nmb),
+    pi_sdr = c(pi_vals, rep(NA_real_, n)), treg_price = c(jitter(15000), rep(NA_real_, n)),
+    relapse_hazard_annual = c(h_vals, rep(NA_real_, n)),
+    util_modsev = rep(jitter(0.5), 2), util_resp = rep(jitter(0.6), 2),
+    util_mild = rep(jitter(0.7), 2), util_remission = rep(jitter(0.8), 2),
+    util_surgery = rep(jitter(0.4), 2),
+    stringsAsFactors = FALSE
+  )
+
+  res <- evppi_by_subset(psa_toy, wtp_usd = wtp)
+  get <- function(s) res$evppi[res$subset == s]
+  total <- res$total_evpi[1]
+
+  # 1. B is genuinely non-zero: knowing durability alone resolves a real share of the decision.
+  expect_true(get("B") > 0.02 * total)
+  # 2. A alone still carries more than B alone here (pi enters linearly over its whole [0,1]
+  #    range, h only through a bounded decay factor) -- stated so this test would catch the two
+  #    columns being swapped somewhere in evppi_by_subset()'s subset construction.
+  expect_true(get("A") > get("B"))
+  # 3. The durability BLOCK is worth more than either of its halves. This is EVPPI's monotonicity
+  #    in the subset, and A u B is 2 raw dimensions so reduce_for_gam() leaves it unreduced --
+  #    none of the PCA-dilution artifact evppi_by_subset()'s docstring warns about applies to this
+  #    row, which is exactly why the durability block is a trustworthy row to lead Aim 3 with.
+  expect_true(get("A u B") >= get("A") - 1e-6)
+  expect_true(get("A u B") >= get("B") - 1e-6)
+  # 4. Knowing pi and h together resolves nearly ALL of this decision by construction (only the
+  #    +/- $150 noise term is left), so A u B should recover close to the whole total EVPI.
+  expect_equal(get("A u B"), total, tolerance = 0.1)
+  # 5. The exact-arithmetic ceiling -- EVPPI can never exceed total EVPI. Asserted HERE rather
+  #    than on the real 250-draw PSA fixture above, because this fixture is non-degenerate by
+  #    construction (total EVPI is on a several-thousand-dollar scale, far above the GAM's own
+  #    estimation error), so the inequality is actually resolvable rather than lost in noise.
+  expect_true(all(res$evppi <= total * 1.01))
+  # 6. Price is not part of this decision at all; it must not borrow credit from the durability
+  #    block. The bound is 5% of total EVPI, not ~0: `treg_price` in this fixture is a constant
+  #    plus 1e-6 jitter (it exists only so reduce_for_gam()'s prcomp() step has non-zero variance
+  #    to scale), and a GAM smooth of a strongly-varying response against an essentially constant
+  #    predictor still returns a small non-zero EVPPI -- the estimator's own noise floor, measured
+  #    at ~2% of total here. The check that matters is that C is an order of magnitude below B,
+  #    which it is (~$52 vs ~$1,120).
+  expect_true(get("C") < 0.05 * total)
+  expect_true(get("C") < 0.1 * get("B"))
 })
 
 test_that("evppi_prior_sensitivity returns one full subset table per prior, with a stable subset set and a within-prior rank", {
@@ -276,11 +375,13 @@ test_that("evppi_prior_sensitivity returns one full subset table per prior, with
   res <- evppi_prior_sensitivity(psa, wtp_usd = 100000)
 
   expect_setequal(res$prior, names(PI_PRIOR_SENSITIVITY_SPECS))
-  expect_equal(nrow(res), length(PI_PRIOR_SENSITIVITY_SPECS) * 7)  # 7 subsets, per evppi_by_subset()
+  expect_equal(nrow(res), length(PI_PRIOR_SENSITIVITY_SPECS) * length(EXPECTED_EVPPI_SUBSETS))
 
-  # Every prior's rows should carry the SAME 7 subsets.
+  # Every prior's rows should carry the SAME subsets -- including B and A u B, which the
+  # reweighting must leave in place: only pi's prior is being varied, and prior_reweight()'s
+  # docstring derives why pi-only importance weights stay exact now that h is sampled too.
   for (p in unique(res$prior)) {
-    expect_setequal(res$subset[res$prior == p], c("A", "C", "E", "A u C", "A u E", "C u E", "A u C u E"))
+    expect_setequal(res$subset[res$prior == p], EXPECTED_EVPPI_SUBSETS)
   }
 
   # rank_within_prior is an integer rank within each prior group (ties -> shared minimum rank, so
