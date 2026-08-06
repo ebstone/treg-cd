@@ -111,6 +111,33 @@ test_that("run_psa is reproducible under a fixed seed and produces one row per (
   expect_setequal(a$intervention, c("UST", "IFX", "ADA", "TREG"))
 })
 
+test_that("run_psa's comparator-arm hoist (2026-08-06) reproduces run_comparator_arm_lifetime() called directly, per draw", {
+  # The hoist itself (this function's own docstring, "Performance note"): comparator arms are
+  # simulated ONCE outside the draw loop, not once per draw, on the argument that nothing PSA
+  # samples changes their occupancy trace. This test is the check that argument actually holds --
+  # comparing run_psa()'s own output against run_comparator_arm_lifetime() called directly (the
+  # UN-hoisted code path) for every draw, not just asserting the hoist runs without error.
+  res <- run_psa(n_draws = 5, raw_dir = RAW_DIR, proc_dir = PROC_DIR, seed = 42)
+  # Re-seed identically and re-draw the utility chain FIRST, exactly as run_psa() itself does
+  # right after its own set.seed(42) call -- sample_utility_chain_draws() is the first
+  # RNG-consuming call inside run_psa(), so this reproduces the same n_draws x 5 utility matrix.
+  set.seed(42)
+  utility_draws <- sample_utility_chain_draws(5, PROC_DIR)
+
+  for (tx in c("UST", "IFX", "ADA")) {
+    rows <- res[res$intervention == tx, ]
+    rows <- rows[order(rows$draw), ]
+    for (i in seq_len(5)) {
+      expected <- run_comparator_arm_lifetime(
+        tx, HORIZON_CYCLES_6YR, build_all_transition_matrices(RAW_DIR), raw_dir = RAW_DIR,
+        proc_dir = PROC_DIR, utilities = utility_draws[i, ]
+      )
+      expect_equal(rows$qalys[i], expected$qalys, tolerance = 1e-9, info = paste(tx, i))
+      expect_equal(rows$total_cost[i], expected$total_cost, tolerance = 1e-9, info = paste(tx, i))
+    }
+  }
+})
+
 test_that("run_psa's comparator arms have constant cost across draws (nothing sampled affects it yet) but varying QALYs (utility is sampled)", {
   res <- run_psa(n_draws = 15, raw_dir = RAW_DIR, proc_dir = PROC_DIR, seed = 2)
   ust <- res[res$intervention == "UST", ]

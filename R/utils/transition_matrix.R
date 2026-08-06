@@ -92,6 +92,31 @@ age_adjust_matrix <- function(m, death_prob) {
   out
 }
 
+#' Simulate a cohort through `n_cycles` of a single transition matrix, returning the full
+#' per-cycle occupancy trace (not just the endpoint). Moved here from R/02_markov_engine.R on
+#' 2026-08-06 (B1 fix, see R/00_derive_transition_probs.R's own history comment): R/00 needs this
+#' to correctly re-derive the published induction table's terminal end-of-induction split (running
+#' Aliyev's own 2-week induction matrix forward `induction_cycles` times), and R/00 is sourced
+#' before R/02 in this project's dependency order -- putting the primitive here, alongside the
+#' other matrix-construction/validation helpers both R/00 and R/02 already share, avoids R/00
+#' having to source "downstream" of itself. R/02's own maintenance engine still uses this
+#' identically (unchanged behaviour, just relocated) via its own top-of-file source() of this file.
+#'
+#' Row 1 of the returned matrix is `initial_state` (cycle 0, before any transition); row i+1 is
+#' the occupancy after i cycles. Cohort conservation (each row summing to whatever
+#' `initial_state` summed to) follows directly from `m`'s rows summing to 1 -- validated at load
+#' time by validate_row_sums(), not re-checked here on every multiply.
+simulate_cohort <- function(m, initial_state, n_cycles) {
+  states <- rownames(m)
+  stopifnot(!is.null(states), length(initial_state) == length(states), n_cycles >= 0)
+  trace <- matrix(0, nrow = n_cycles + 1, ncol = length(states), dimnames = list(NULL, states))
+  trace[1, ] <- initial_state
+  for (t in seq_len(n_cycles)) {
+    trace[t + 1, ] <- trace[t, ] %*% m
+  }
+  trace
+}
+
 #' Long-format (from_state, to_state, probability) rows from a square matrix.
 matrix_to_long <- function(m, therapy) {
   states <- rownames(m)

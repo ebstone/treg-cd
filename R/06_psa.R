@@ -201,9 +201,38 @@ sample_dirichlet_row <- function(n_draws, probs, concentration) {
 #' don't let you regress net benefit against "how favourable was this draw's utility draw",
 #' only against the CONSEQUENCE of that draw, which is exactly the effect you're trying to
 #' explain, not a usable predictor.
+#'
+#' `n_cycles`/`baseline_age`/`life_table = NULL` (defaults, byte-identical to before these
+#' comments existed): `n_cycles` still defaults to HORIZON_CYCLES_6YR and `baseline_age = NULL`
+#' still means every arm runs on a fixed matrix with Aliyev's own embedded trial-cohort
+#' mortality, exactly as this function always has. `analysis/run_full_analysis.R`'s primary PSA
+#' now calls this with `n_cycles = HORIZON_CYCLES_LIFETIME, baseline_age =
+#' ASSUMED_PATIENT_AGE_YEARS` (peer review 2026-08-05, B2/README.md's Status section) -- the
+#' 6.15-year defaults below remain available for the S5 comparability-scenario PSA, unchanged.
+#'
+#' **Performance note (2026-08-06, same review):** the three comparator arms' occupancy traces
+#' (UST/IFX/ADA) are simulated ONCE, before the draw loop, via
+#' simulate_comparator_arm_lifetime() (R/05_deterministic_results.R) -- not once per draw. This
+#' is exact, not an approximation: R/06 doesn't sample any transition probability (module
+#' header's "Not yet implemented" list), so a comparator's induction split and maintenance matrix
+#' -- and therefore its whole trace -- is identical across every draw for a fixed (n_cycles,
+#' baseline_age) call; only that draw's utility vector changes what
+#' attach_maintenance_costs_utilities() computes FROM the (unchanged) trace. This collapses what
+#' would otherwise be `n_draws` x 3 full lifetime Markov simulations (the dominant cost of a
+#' lifetime-horizon PSA, since each one re-derives an age-adjusted matrix pair every one of
+#' HORIZON_CYCLES_LIFETIME cycles once `baseline_age` is supplied) down to 3, regardless of
+#' `n_draws`. TREG is NOT hoisted this way: its occupancy trace genuinely varies per draw (pi
+#' varies), so it still simulates once per draw. `verify_pi_factorization()`
+#' (R/05_deterministic_results.R) already establishes that Treg's trace is exactly linear in pi
+#' at this project's current fixed relapse hazard (h = 0, not PSA-sampled) -- collapsing Treg's
+#' per-draw simulation to a handful of reference runs plus per-draw linear interpolation is the
+#' next optimisation this leaves on the table, flagged rather than attempted here (a correctness-
+#' sensitive change this pass had no R toolchain available to verify against the test suite,
+#' README.md's Status section).
 run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = ASSUMED_PATIENT_WEIGHT_KG,
                      cycle_weeks = 2, annual_rate = 0.03, apply_cap = TRUE, cap_cycle = 52,
-                     raw_dir = "data/raw", proc_dir = "data/processed", seed = 20260805) {
+                     raw_dir = "data/raw", proc_dir = "data/processed", seed = 20260805,
+                     baseline_age = NULL, life_table = NULL) {
   if (!is.null(seed)) set.seed(seed)
 
   matrices <- build_all_transition_matrices(raw_dir)
@@ -219,6 +248,29 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
   induction_data <- load_published_induction(raw_dir)
   schedule <- load_dosing_schedule(raw_dir)
   prices <- load_drug_prices(raw_dir)
+  if (is.null(life_table) && !is.null(baseline_age)) life_table <- load_life_table(raw_dir)
+
+  # Comparator-trace hoist (this function's own docstring, "Performance note"): simulated ONCE
+  # per therapy, outside the draw loop, since nothing PSA samples ever reaches this step.
+  # `monitoring_costs`/`induction_costs` are likewise draw-invariant (perspective is always
+  # "healthcare_sector" in this pass -- no scenario wrapper here varies it) and hoisted the same
+  # way, for the same reason.
+  comparator_arms <- stats::setNames(
+    lapply(COMPARATOR_THERAPIES, function(tx) {
+      simulate_comparator_arm_lifetime(
+        tx, n_cycles, matrices, cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir,
+        induction_data = induction_data, baseline_age = baseline_age, life_table = life_table,
+        cycle_weeks = cycle_weeks
+      )
+    }),
+    COMPARATOR_THERAPIES
+  )
+  monitoring_costs <- health_state_monitoring_costs()
+  induction_costs <- stats::setNames(
+    vapply(COMPARATOR_THERAPIES, induction_drug_cost, numeric(1), weight_kg = weight_kg,
+           schedule = schedule, prices = prices),
+    COMPARATOR_THERAPIES
+  )
 
   rows <- vector("list", n_draws * (length(COMPARATOR_THERAPIES) + 1))
   k <- 0
@@ -233,9 +285,13 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
     )
 
     for (tx in COMPARATOR_THERAPIES) {
-      s <- run_comparator_arm_lifetime(tx, n_cycles, matrices, weight_kg, cycle_weeks, annual_rate,
-                                        apply_cap, cap_cycle, raw_dir, proc_dir, utilities = utilities_i,
-                                        induction_data = induction_data, schedule = schedule, prices = prices)
+      # Re-aggregates the SAME hoisted trace with this draw's own utility vector -- exactly what
+      # run_comparator_arm_lifetime() computes downstream of its own (here-skipped) simulate step.
+      attached <- attach_maintenance_costs_utilities(
+        comparator_arms[[tx]], utilities_i, monitoring_costs, cycle_weeks, annual_rate,
+        therapy = tx, weight_kg = weight_kg, schedule = schedule, prices = prices
+      )
+      s <- summarise_arm(attached, induction_cost = induction_costs[[tx]])
       k <- k + 1
       rows[[k]] <- c(list(draw = i, intervention = tx, qalys = s$qalys, total_cost = s$total_cost,
                            pi_sdr = NA_real_, treg_price = NA_real_), util_cols)
@@ -244,7 +300,8 @@ run_psa <- function(n_draws = 10000, n_cycles = HORIZON_CYCLES_6YR, weight_kg = 
     treg <- run_treg_arm_lifetime(n_cycles, pi_draws[i], relapse_hazard_annual = 0, price_draws[i],
                                    matrices, weight_kg, cycle_weeks, annual_rate, cap_cycle = cap_cycle,
                                    apply_cap = apply_cap, raw_dir = raw_dir, proc_dir = proc_dir,
-                                   utilities = utilities_i, induction_data = induction_data, prices = prices)
+                                   utilities = utilities_i, induction_data = induction_data, prices = prices,
+                                   baseline_age = baseline_age, life_table = life_table)
     k <- k + 1
     rows[[k]] <- c(list(draw = i, intervention = "TREG", qalys = treg$qalys, total_cost = treg$total_cost,
                          pi_sdr = pi_draws[i], treg_price = price_draws[i]), util_cols)

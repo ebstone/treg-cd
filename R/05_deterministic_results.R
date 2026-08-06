@@ -151,6 +151,59 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 
 # ---- Comparator arms (UST/IFX/ADA) ---------------------------------------------------------------
 
+#' The "Markov" half of run_comparator_arm_lifetime(), split out (2026-08-06, alongside the
+#' horizon-focus change, README.md's Status section) so a caller that needs the same occupancy
+#' trace many times over unchanged inputs -- R/06_psa.R's PSA loop, specifically -- can compute it
+#' ONCE rather than once per draw. This is safe because nothing PSA currently samples
+#' (utilities, Treg's price, pi) ever reaches this function: transition probabilities aren't
+#' Dirichlet-sampled (module header's "Not yet implemented" list, R/06_psa.R), so a comparator
+#' therapy's induction split and maintenance matrix -- and therefore its whole occupancy trace --
+#' is identical across every PSA draw for a fixed (n_cycles, baseline_age, refractory) call.
+#' Returns exactly the `arm` object (on_biologic, on_ct, total)
+#' run_comparator_arm_lifetime() feeds to attach_maintenance_costs_utilities() next; this function
+#' is a pure extraction, not a behavioural change -- run_comparator_arm_lifetime() below now calls
+#' it internally and is otherwise byte-identical to before this split.
+simulate_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, cap_cycle = 52, apply_cap = TRUE,
+                                              raw_dir = "data/raw", induction_data = NULL,
+                                              baseline_age = NULL, life_table = NULL, cycle_weeks = 2,
+                                              refractory = FALSE, refractory_multipliers = NULL) {
+  therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
+  stopifnot(all(c(therapy, "CT") %in% names(matrices)))
+
+  if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
+  induction_row <- induction_data[induction_data$therapy == therapy, ]
+
+  therapy_matrix <- matrices[[therapy]]
+  if (refractory) {
+    if (is.null(refractory_multipliers)) refractory_multipliers <- load_refractory_multipliers(raw_dir)
+    induction_row <- apply_refractory_multiplier_induction(
+      induction_row, refractory_multipliers$induction_response_multiplier,
+      refractory_multipliers$induction_remission_multiplier
+    )
+    therapy_matrix <- apply_refractory_multiplier_maintenance(
+      therapy_matrix, refractory_multipliers$maintenance_remission_multiplier_cumulative,
+      refractory_multipliers$maintenance_cumulative_n_cycles,
+      surgery_hazard_multiplier_cumulative = refractory_multipliers$surgery_hazard_multiplier_cumulative,
+      surgery_cumulative_n_cycles = refractory_multipliers$surgery_cumulative_n_cycles
+    )
+  }
+  split <- run_decision_tree(induction_row)
+
+  if (is.null(baseline_age)) {
+    run_maintenance_arm(
+      therapy_matrix, matrices[["CT"]], split$initial_on_biologic, n_cycles,
+      cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = split$initial_on_ct
+    )
+  } else {
+    run_maintenance_arm_with_mortality(
+      therapy_matrix, matrices[["CT"]], split$initial_on_biologic, n_cycles,
+      baseline_age = baseline_age, cap_cycle = cap_cycle, apply_cap = apply_cap,
+      initial_on_ct = split$initial_on_ct, life_table = life_table, raw_dir = raw_dir,
+      cycle_weeks = cycle_weeks
+    )
+  }
+}
+
 #' Run one biologic comparator arm end to end (induction split -> maintenance Markov -> cost/
 #' utility attachment -> lifetime summary), at the given horizon. `matrices` is
 #' build_all_transition_matrices()'s output (or a compatible named list with `therapy` and "CT"
@@ -170,10 +223,10 @@ build_all_transition_matrices <- function(raw_dir = "data/raw") {
 #' -- purely a performance path, output is identical either way.
 #'
 #' `baseline_age = NULL` (default): the induction+maintenance trace runs on a fixed matrix every
-#' cycle, exactly as before this parameter existed -- fully backward compatible (every 6.15-year/
-#' 10-year caller and test is unaffected; those horizons deliberately still run on Aliyev's own
-#' embedded trial-cohort mortality, module header). Pass a starting age (HORIZON_CYCLES_LIFETIME
-#' callers use ASSUMED_PATIENT_AGE_YEARS, R/04_costs_utilities.R) to instead route through
+#' cycle, exactly as before this parameter existed (module header; every 6.15-year/10-year caller
+#' and test is unaffected -- those horizons deliberately still run on Aliyev's own embedded
+#' trial-cohort mortality). Pass a starting age (HORIZON_CYCLES_LIFETIME callers use
+#' ASSUMED_PATIENT_AGE_YEARS, R/04_costs_utilities.R) to instead route through
 #' run_maintenance_arm_with_mortality() (R/02_markov_engine.R) -- age- and sex-specific
 #' background mortality, sourced from `life_table` (R/utils/life_table.R's load_life_table(),
 #' loaded from `raw_dir` if not supplied).
@@ -209,40 +262,12 @@ run_comparator_arm_lifetime <- function(therapy, n_cycles, matrices, weight_kg =
                                          refractory_multipliers = NULL,
                                          perspective = "healthcare_sector") {
   therapy <- match.arg(therapy, COMPARATOR_THERAPIES)
-  stopifnot(all(c(therapy, "CT") %in% names(matrices)))
 
-  if (is.null(induction_data)) induction_data <- load_published_induction(raw_dir)
-  induction_row <- induction_data[induction_data$therapy == therapy, ]
-
-  therapy_matrix <- matrices[[therapy]]
-  if (refractory) {
-    if (is.null(refractory_multipliers)) refractory_multipliers <- load_refractory_multipliers(raw_dir)
-    induction_row <- apply_refractory_multiplier_induction(
-      induction_row, refractory_multipliers$induction_response_multiplier,
-      refractory_multipliers$induction_remission_multiplier
-    )
-    therapy_matrix <- apply_refractory_multiplier_maintenance(
-      therapy_matrix, refractory_multipliers$maintenance_remission_multiplier_cumulative,
-      refractory_multipliers$maintenance_cumulative_n_cycles,
-      surgery_hazard_multiplier_cumulative = refractory_multipliers$surgery_hazard_multiplier_cumulative,
-      surgery_cumulative_n_cycles = refractory_multipliers$surgery_cumulative_n_cycles
-    )
-  }
-  split <- run_decision_tree(induction_row)
-
-  if (is.null(baseline_age)) {
-    arm <- run_maintenance_arm(
-      therapy_matrix, matrices[["CT"]], split$initial_on_biologic, n_cycles,
-      cap_cycle = cap_cycle, apply_cap = apply_cap, initial_on_ct = split$initial_on_ct
-    )
-  } else {
-    arm <- run_maintenance_arm_with_mortality(
-      therapy_matrix, matrices[["CT"]], split$initial_on_biologic, n_cycles,
-      baseline_age = baseline_age, cap_cycle = cap_cycle, apply_cap = apply_cap,
-      initial_on_ct = split$initial_on_ct, life_table = life_table, raw_dir = raw_dir,
-      cycle_weeks = cycle_weeks
-    )
-  }
+  arm <- simulate_comparator_arm_lifetime(
+    therapy, n_cycles, matrices, cap_cycle = cap_cycle, apply_cap = apply_cap, raw_dir = raw_dir,
+    induction_data = induction_data, baseline_age = baseline_age, life_table = life_table,
+    cycle_weeks = cycle_weeks, refractory = refractory, refractory_multipliers = refractory_multipliers
+  )
 
   if (is.null(utilities)) utilities <- load_health_state_utilities(proc_dir)
   perspective <- match.arg(perspective, c("healthcare_sector", "societal"))

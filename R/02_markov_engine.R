@@ -20,25 +20,13 @@ MAINTENANCE_STATES <- c("Moderate-Severe", "Moderate-Severe Responder", "Mild",
                          "Remission", "Surgery", "Death")
 
 # ---- Core primitive ---------------------------------------------------------
-
-#' Simulate a cohort through `n_cycles` of a single transition matrix, returning the full
-#' per-cycle occupancy trace (not just the endpoint -- needed for half-cycle correction
-#' downstream, and for the CT-switch bookkeeping in run_maintenance_arm() below).
-#'
-#' Row 1 of the returned matrix is `initial_state` (cycle 0, before any transition); row i+1 is
-#' the occupancy after i cycles. Cohort conservation (each row summing to whatever
-#' `initial_state` summed to) follows directly from `m`'s rows summing to 1 -- validated at load
-#' time by validate_row_sums(), not re-checked here on every multiply.
-simulate_cohort <- function(m, initial_state, n_cycles) {
-  states <- rownames(m)
-  stopifnot(!is.null(states), length(initial_state) == length(states), n_cycles >= 0)
-  trace <- matrix(0, nrow = n_cycles + 1, ncol = length(states), dimnames = list(NULL, states))
-  trace[1, ] <- initial_state
-  for (t in seq_len(n_cycles)) {
-    trace[t + 1, ] <- trace[t, ] %*% m
-  }
-  trace
-}
+#
+# simulate_cohort() -- moved to R/utils/transition_matrix.R, 2026-08-06 (B1 fix,
+# R/00_derive_transition_probs.R's own history comment): R/00 needs it too, and is sourced before
+# this file in the project's dependency order, so the primitive now lives alongside
+# build_transition_matrix()/validate_row_sums() instead of here. This file's own top-of-file
+# `source("R/utils/transition_matrix.R")` still makes it available under the same name, with
+# identical behaviour -- nothing below this point, or any existing caller, changed.
 
 # ---- Two-track maintenance arm (biologic + CT switch) -----------------------
 

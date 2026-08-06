@@ -67,11 +67,19 @@ independently-sourced Treg transition matrix anywhere in this codebase.
 `R/00_derive_transition_probs.R`'s `load_published_induction()`.
 
 **Source:** Aliyev et al. 2019 Appendix S2, Supplementary Table 3, transcribed verbatim
-(`data/raw/aliyev2019_appendixS2_table3_induction_transition_probabilities.csv`) — a single-step
-absorbing partition, not a repeated-cycle process. Each therapy's induction row gives four
-terminal shares: `to_moderate_severe`, `to_moderate_severe_responder`, `to_mild`, `to_remission`.
-UST/IFX/ADA each have their own row; **CT has no induction row at all** — patients only ever reach
-CT by failing a biologic first (§3), never by starting there.
+(`data/raw/aliyev2019_appendixS2_table3_induction_transition_probabilities.csv`). Table 3's
+Moderate-Severe row is a **per-2-week-cycle** transition probability derived from a week-6 (UST)
+or week-4 (IFX/ADA) trial endpoint (Appendix S2's own worked example) — **not** the terminal
+end-of-induction split itself (B1 fix, 2026-08-06, `docs/model_audit_v6.md` A17; earlier
+revisions of this project read it as a one-step split, which was wrong and understated every
+comparator's true responder pool by ~1.75–2.4×). `load_published_induction()`
+(`R/00_derive_transition_probs.R`) now runs the full induction matrix through `simulate_cohort()`
+for `INDUCTION_CYCLES[[therapy]]` cycles (UST = 3, IFX/ADA = 2) and reads the terminal row, which
+is what feeds `run_decision_tree()` — that function's own signature/mechanics are unchanged by
+the fix. Each therapy's corrected terminal row gives four terminal shares: `to_moderate_severe`,
+`to_moderate_severe_responder`, `to_mild`, `to_remission`. UST/IFX/ADA each have their own row;
+**CT has no induction row at all** — patients only ever reach CT by failing a biologic first
+(§3), never by starting there.
 
 **Mechanics:** `to_moderate_severe_responder`/`to_mild`/`to_remission` become the initial
 occupancy vector for the biologic-arm maintenance trace; `to_moderate_severe` becomes the initial

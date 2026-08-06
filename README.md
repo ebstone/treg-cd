@@ -206,11 +206,15 @@ compatible). This resolves the structural-infeasibility problem the 6.15-year ho
 cure fraction at any plausible price made Treg cost-effective at that horizon; at the lifetime
 horizon the required cure fraction π\* at Treg's sourced acquisition price ($19,916.75) is
 feasible at all three WTP thresholds (see `output/tables/headroom_at_sourced_price_lifetime.csv`
+[renamed `headroom_at_sourced_price.csv` 2026-08-06, once the lifetime horizon became the
+primary/unsuffixed output — see the B1-fix/horizon-focus entry below]
 and analysis_plan.md §4.3 for the exact figures). PSA/EVPI/EVPPI/probabilistic EJP still run at
 the 6.15-year horizon this pass — extending `age_adjust_matrix()` to a ~40,000-call PSA is an
-unbenchmarked performance question, deliberately deferred. `analysis/run_full_analysis.R`'s
-"6/6: Lifetime horizon" section now runs this end to end. Full test suite: 385 assertions,
-0 failures.
+unbenchmarked performance question, deliberately deferred [addressed 2026-08-06, see below: the
+comparator-trace hoist plus moving these outputs to the lifetime horizon by default].
+`analysis/run_full_analysis.R`'s "6/6: Lifetime horizon" section now runs this end to end
+[superseded by the 2026-08-06 restructuring's numbered sections]. Full test suite: 385
+assertions, 0 failures.
 
 **h sweep + π prior-sensitivity on EVPPI implemented (2026-08-05)**, closing the resolutions
 memo's own priority-order item 3 (`docs/treg-cd_decision_resolutions_2026-08-05.md` §3.2/§3.3),
@@ -260,7 +264,8 @@ immediately after the lifetime-horizon work above. Two independent additions:
 
 `analysis/run_full_analysis.R` gained two new sections (7/8, 8/8) wiring both pieces in: the
 (π, T, price) headroom surface at the lifetime horizon plus the factorisation check
-(`output/tables/headroom_frontier_by_duration_lifetime.csv`,
+(`output/tables/headroom_frontier_by_duration_lifetime.csv` [renamed
+`headroom_frontier_by_duration.csv` 2026-08-06, see below],
 `output/tables/pi_factorization_check.csv`), and the prior-sensitivity EVPPI table
 (`output/tables/evppi_prior_sensitivity.csv`) computed from the PSA draws already produced in
 section 3/8 — no new PSA run. Full test suite: 461 assertions, 0 failures.
@@ -431,6 +436,54 @@ across `R/00`-`R/09`: health states, the induction/maintenance/mixture-cure stru
 structural scenario's mechanism cross-referenced to the section it modifies, and a module index.
 Deliberately scoped to "what the code does," not the design rationale (`docs/analysis_plan.md`
 §6 remains the place for that) — the two are meant to stay separate, not merged.
+
+**B1 fix and horizon-focus change (2026-08-06), from an external peer review dated 2026-08-05
+(`docs/model_audit_v6.md` A17). Every deterministic and probabilistic number produced before
+this commit is superseded, same as A16 and the biosimilar re-pricing — do not cite anything
+from before it.**
+
+- **B1 (blocking): induction was applied for one 2-week cycle instead of the full 4–6 week
+  induction period.** `load_published_induction()` (`R/00_derive_transition_probs.R`) read
+  Aliyev Supplementary Table 3's Moderate-Severe row directly as the terminal end-of-induction
+  split; it is actually a **per-2-week-cycle** transition probability derived from a week-6
+  (UST) / week-4 (IFX/ADA) trial endpoint (Appendix S2's own worked example), and needed to be
+  applied 3 (UST) or 2 (IFX/ADA) times to reach that endpoint. As coded, this understated every
+  comparator's true end-of-induction responder pool by ~1.75–2.4×, understated comparator
+  maintenance drug cost by the same factor (the EJP is approximately the NPV of displaced
+  comparator drug spend), and — because `best_comparator_nmb()` solves the EJP against whichever
+  comparator has the highest NMB — could change which arm the EJP is even computed against (IFX
+  had the larger responder pool as coded; UST does once corrected). Fixed entirely upstream, at
+  the point Table 3 is loaded: `load_published_induction()` now runs each therapy's full
+  induction matrix through `simulate_cohort()` (relocated to `R/utils/transition_matrix.R`, see
+  its own header) for the right number of cycles and reads the terminal row.
+  `R/01_decision_tree.R`'s `run_decision_tree()` and every downstream caller (R/05/R/06/R/08,
+  the refractory-multiplier scenario) needed no changes at all — they consume
+  `load_published_induction()`'s corrected output automatically. New
+  `tests/testthat/test-external-validity.R` (per the review's own M9 recommendation) asserts an
+  EXTERNAL face-validity check the internal-consistency test suite could not have caught:
+  end-of-induction Remission occupancy reproduces UNITI's published week-6 remission (0.349) and
+  an independently-computed IFX/ADA week-4 estimate (~0.36), within the review's own stated
+  tolerance — not merely that rows sum to 1 or cohort mass is conserved. Full details:
+  `docs/model_audit_v6.md` A17.
+- **Horizon focus: the lifetime horizon (§4.3's own adopted base case), not the 6.15-year
+  comparator, is now what this project treats as primary.** The review noted, correctly, that
+  the three primary aims were being computed at two mutually inconsistent horizons — the
+  lifetime horizon was the adopted base case, but the PSA, EVPI surface, EVPPI, deterministic
+  and probabilistic EJP, and the Aim 4 headroom frontier all defaulted to the 6.15-year
+  comparator horizon, which §4.3 itself states is structurally incapable of representing a cure.
+  `analysis/run_full_analysis.R` is restructured so every primary output (base case, headroom
+  frontier, PSA, EVPI/EVPPI, EJP) runs at `HORIZON_CYCLES_LIFETIME` first and is written to the
+  unsuffixed table names; the 6.15-year and 10-year horizons are retained, explicitly labelled,
+  as the S5 comparability scenarios `analysis_plan.md` §10.3 already calls them, written to
+  `_6yr_comparability` / `_10yr_comparability`-suffixed tables. `R/06_psa.R`'s comparator-arm
+  Markov simulation is hoisted out of the per-draw loop (`simulate_comparator_arm_lifetime()`,
+  R/05) — transition probabilities aren't PSA-sampled in this pass, so each comparator's
+  occupancy trace is identical across all 10,000 draws and only needs computing once — which is
+  most of what makes a lifetime-horizon PSA (1,691 cycles vs. 160) tractable at all. No R
+  toolchain is available in the environment this change was made in, so `output/tables/` has not
+  actually been regenerated from a live run; the next session with R available should run
+  `analysis/run_full_analysis.R` end to end and commit (or hash-manifest, R6) the results before
+  anything from this section is cited.
 
 ## Repository structure
 

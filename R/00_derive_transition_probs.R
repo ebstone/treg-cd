@@ -34,6 +34,28 @@
 # conversion, same as Table 3. This also means the engine (R/02_markov_engine.R) runs Aliyev's
 # actual matrices unmodified, which directly strengthens Aim 5 (external validation against
 # Aliyev's own published results).
+#
+# HISTORY, 2026-08-06 (B1 fix, peer review 2026-08-05): the third revision's own claim above --
+# "Table 3 is already the terminal end-of-induction split... a single-step absorbing partition,
+# not a repeated-cycle process" -- is WRONG, and every result in this repository before this fix
+# is superseded (docs/model_audit_v6.md A17). Appendix S2's own worked example is explicit that
+# Table 3's Moderate-Severe row is a PER-2-WEEK-CYCLE transition probability derived FROM a
+# week-6/week-4 trial endpoint via a rate conversion, not the endpoint itself:
+#   "Ustekinumab week 6 remission probability -> rate = -ln(1-0.349)/(6/52) = 3.720/yr ->
+#    Probability (2 weeks) = 1 - exp(-3.720/26) = 0.133 -- a 2-week Moderate-Severe to Remission
+#    transition probability."
+# 0.133 is exactly Table 3's published UST Moderate-Severe -> Remission entry -- confirming it
+# must be applied REPEATEDLY (3 times for UST's week-6 endpoint, 2 times for IFX/ADA's week-4
+# endpoint), not read once, to reproduce the trial result it was derived from:
+# 1 - (1-0.133)^3 = 0.348 vs. published UNITI week-6 remission 0.349 (see
+# tests/testthat/test-external-validity.R). The "absorbing" self-loops on Mild/M-SR/Remission that
+# make the published table square (Induction Assumption #3: "any patient that transitions out of
+# the Moderate-Severe state during induction remains in the new state until the end of induction")
+# are exactly what a MULTI-cycle induction with within-phase absorbing states looks like -- they
+# are not evidence the table is a one-step process. `load_published_induction()` below now runs
+# each therapy's full induction matrix through `simulate_cohort()` (R/utils/transition_matrix.R)
+# for `INDUCTION_CYCLES[[therapy]]` cycles and reads the terminal row, instead of reading the
+# Moderate-Severe row's raw published entries directly as the end-of-induction split.
 
 # Repo-root-relative, matching this project's convention of running scripts from the repo root
 # (README.md: `source("analysis/run_full_analysis.R")`). Guarded so this file can also be
@@ -42,7 +64,27 @@
 # tests/testthat/test-derive-transition-probs.R.
 if (!exists("validate_row_sums")) source("R/utils/transition_matrix.R")
 
-# ---- Induction: Table 3, used as-is ----------------------------------------
+# ---- Induction: Table 3, applied for the number of 2-week cycles that reproduces its endpoint --
+
+#' Number of native 2-week cycles Table 3's Moderate-Severe row must be applied for to reach each
+#' therapy's own trial induction endpoint (module header, B1 fix, 2026-08-06). UST's induction
+#' trial (UNITI) reads out at week 6 = 3 cycles; IFX and ADA's own induction trials (Aliyev's
+#' IFX:ADA efficacy ratio = 1.00 base case, R/00's third-revision note above) read out at week 4 =
+#' 2 cycles -- both directly against the endpoint labels in
+#' data/raw/aliyev2019_appendixS1_table2_parameters.csv ("UST Week 6 Response Probability", "ADA
+#' Week 4 Response Probability"). Verified by two independent reconstructions of the published
+#' endpoint, not just this table's own worked example (see test-external-validity.R): UST,
+#' `1-(1-0.133)^3 = 0.348` vs. published UNITI week-6 remission 0.349; IFX/ADA,
+#' `1-(1-0.203)^2 = 0.365` vs. an ADA week-4 remission of 0.50 response x 0.72 remitter:responder =
+#' 0.360 computed from the same appendix's raw trial-endpoint table.
+INDUCTION_CYCLES <- c(UST = 3, IFX = 2, ADA = 2)
+
+#' The four induction states Table 3 actually reports rows for -- deliberately not the full
+#' 6-state MAINTENANCE_STATES universe (Table 3 has no Surgery/Death entries; induction has no
+#' route to either, R/01_decision_tree.R's own module header) -- so build_transition_matrix()'s
+#' padding never has to invent an induction-phase Surgery/Death row that doesn't exist in Aliyev's
+#' own table.
+INDUCTION_STATES <- c("Moderate-Severe", "Moderate-Severe Responder", "Mild", "Remission")
 
 load_published_induction <- function(raw_dir) {
   df <- utils::read.csv(
@@ -53,22 +95,51 @@ load_published_induction <- function(raw_dir) {
   # 0.9994) -- a looser tolerance than the default is expected and correct here, not a bug.
   validate_row_sums(df, by = "treatment", tol = 0.001)
 
-  # Only the Moderate-Severe row is a live induction split; the other rows (Moderate-Severe
-  # Responder/Mild/Remission -> self, probability 1) are the absorbing placeholders that make
-  # the published table square, not additional induction-phase information.
-  out <- df[df$from_state == "Moderate-Severe", c("treatment", "to_state", "probability")]
-  wide <- reshape(out, idvar = "treatment", timevar = "to_state", direction = "wide")
-  names(wide) <- sub("^probability\\.", "", names(wide))
-  data.frame(
-    therapy = wide$treatment,
-    confidence = "published_source",
-    to_moderate_severe = wide[["Moderate-Severe"]],
-    to_moderate_severe_responder = wide[["Moderate-Severe Responder"]],
-    to_mild = wide[["Mild"]],
-    to_remission = wide[["Remission"]],
-    note = "Aliyev et al. 2019 Appendix S2, Supplementary Table 3 (verified against the table image; PHAR2208 supplementary materials). Used as published, no conversion applied.",
-    stringsAsFactors = FALSE
-  )
+  # B1 fix (module header, 2026-08-06): Table 3's Moderate-Severe row is a PER-2-WEEK-CYCLE
+  # transition probability, not the terminal end-of-induction split -- it must be run through
+  # simulate_cohort() for INDUCTION_CYCLES[[therapy]] cycles, starting from 100% Moderate-Severe,
+  # to reach the split this project's induction decision tree (R/01_decision_tree.R) actually
+  # needs. The other three rows (Moderate-Severe Responder/Mild/Remission -> self, probability 1)
+  # are the absorbing within-induction states Aliyev's own Induction Assumption #3 describes
+  # ("any patient that transitions out of the Moderate-Severe state during induction remains in
+  # the new state until the end of induction") -- they make the repeated multiplication correct
+  # (once a patient responds, further induction cycles leave them exactly where they are), not
+  # evidence the whole table is a single step (the third-revision comment this fix retracts,
+  # module header).
+  therapies <- unique(df$treatment)
+  stopifnot(all(therapies %in% names(INDUCTION_CYCLES)))
+  rows <- lapply(therapies, function(tx) {
+    tx_df <- df[df$treatment == tx, ]
+    m <- build_transition_matrix(tx_df, INDUCTION_STATES)
+    n_cycles <- INDUCTION_CYCLES[[tx]]
+    initial <- stats::setNames(c(1, 0, 0, 0), INDUCTION_STATES)
+    trace <- simulate_cohort(m, initial, n_cycles)
+    terminal <- trace[n_cycles + 1, ]
+
+    data.frame(
+      therapy = tx,
+      confidence = "published_source",
+      to_moderate_severe = unname(terminal[["Moderate-Severe"]]),
+      to_moderate_severe_responder = unname(terminal[["Moderate-Severe Responder"]]),
+      to_mild = unname(terminal[["Mild"]]),
+      to_remission = unname(terminal[["Remission"]]),
+      induction_cycles = n_cycles,
+      note = sprintf(
+        paste(
+          "Aliyev et al. 2019 Appendix S2, Supplementary Table 3 (verified against the table",
+          "image; PHAR2208 supplementary materials): published 2-week Moderate-Severe transition",
+          "probabilities applied for %d native 2-week cycles (B1 fix, 2026-08-06,",
+          "docs/model_audit_v6.md A17) to reach the published week-%d induction endpoint -- not",
+          "read directly as a 1-cycle terminal split."
+        ),
+        n_cycles, n_cycles * 2
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
 }
 
 # ---- Maintenance: Table 4, used as-is at Aliyev's native 2-week cycle ------
@@ -113,8 +184,9 @@ run_derivation <- function(raw_dir = "data/raw", proc_dir = "data/processed", wr
 
 write_derivation_notes <- function(induction_out, maintenance_out, proc_dir) {
   induction_lines <- sprintf(
-    "- **%s**: to_moderate_severe %.4f, to_moderate_severe_responder %.4f, to_mild %.4f, to_remission %.4f",
-    induction_out$therapy, induction_out$to_moderate_severe, induction_out$to_moderate_severe_responder,
+    "- **%s** (%d induction cycles, week %d endpoint): to_moderate_severe %.4f, to_moderate_severe_responder %.4f, to_mild %.4f, to_remission %.4f",
+    induction_out$therapy, induction_out$induction_cycles, induction_out$induction_cycles * 2,
+    induction_out$to_moderate_severe, induction_out$to_moderate_severe_responder,
     induction_out$to_mild, induction_out$to_remission
   )
 
@@ -136,6 +208,16 @@ write_derivation_notes <- function(induction_out, maintenance_out, proc_dir) {
     "",
     sprintf("Generated by `R/00_derive_transition_probs.R` on %s.", format(Sys.Date())),
     "",
+    "**2026-08-06, B1 fix (peer review 2026-08-05, docs/model_audit_v6.md A17):** the third",
+    "revision's own claim below that Table 3 is already the terminal end-of-induction split was",
+    "WRONG -- every induction number produced before this fix is superseded. Table 3's",
+    "Moderate-Severe row is a PER-2-WEEK-CYCLE transition probability derived FROM a week-6",
+    "(UST)/week-4 (IFX/ADA) trial endpoint (Appendix S2's own worked example), not the endpoint",
+    "itself, and must be applied repeatedly -- 3 cycles for UST, 2 for IFX/ADA -- to reach the",
+    "actual end-of-induction split. `load_published_induction()` now does this via",
+    "`simulate_cohort()`; the figures below are the corrected terminal values, not the raw",
+    "published Moderate-Severe row.",
+    "",
     "**2026-08-04, third revision:** this study now runs on Aliyev's native 2-week cycle",
     "throughout, dropping the earlier 8-week-cycle design (analysis_plan.md §4.1) and the",
     "matrix-power conversion it required. The rationale for 8-week -- aligning the",
@@ -155,14 +237,18 @@ write_derivation_notes <- function(induction_out, maintenance_out, proc_dir) {
     "numeric diff against it is no longer informative. The workbook snapshot remains available",
     "for historical reference (`data/data_dictionary.md`).",
     "",
-    "## Induction (Aliyev Supplementary Table 3, used as published)",
+    "## Induction (Aliyev Supplementary Table 3, applied for induction_cycles native 2-week cycles)",
     "",
-    "No conversion needed -- Table 3 is already the terminal end-of-induction split: once a",
-    "patient reaches Mild/M-SR/Remission the published matrix holds them there with probability",
-    "1, showing this is a single-step absorbing partition, not a repeated-cycle process. ADA and",
-    "IFX are published as numerically identical: Aliyev's base case sets the IFX:ADA efficacy",
-    "ratio to 1.00 (varied 0.8-1.2 only in PSA), not a transcription error -- independently",
-    "confirmed against the table image.",
+    "Table 3's Moderate-Severe row is Aliyev's own PER-2-WEEK-CYCLE transition probability, derived",
+    "from a week-6 (UST) / week-4 (IFX/ADA) trial endpoint (Appendix S2's worked example) -- applied",
+    "here for `induction_cycles` cycles (3 for UST, 2 for IFX/ADA) via `simulate_cohort()`, not read",
+    "directly as a 1-cycle terminal split (B1 fix, 2026-08-06, docs/model_audit_v6.md A17,",
+    "superseding this file's own third-revision claim to the contrary). Once a patient reaches",
+    "Mild/M-SR/Remission the published matrix holds them there with probability 1 (Aliyev's own",
+    "Induction Assumption #3) -- an absorbing state WITHIN a multi-cycle induction, not evidence the",
+    "table is a single step. ADA and IFX are published as numerically identical: Aliyev's base case",
+    "sets the IFX:ADA efficacy ratio to 1.00 (varied 0.8-1.2 only in PSA), not a transcription",
+    "error -- independently confirmed against the table image.",
     "",
     paste(induction_lines, collapse = "\n"),
     "",

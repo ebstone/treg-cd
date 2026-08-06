@@ -15,23 +15,72 @@ run_from_repo_root <- function(...) {
   )
 }
 
-test_that("load_published_induction reproduces the verified Table 3 values and sums to 1", {
+test_that("load_published_induction reproduces the verified Table 3 endpoint (B1 fix) and sums to 1", {
   out <- load_published_induction(repo_root_relative("data", "raw"))
   expect_setequal(out$therapy, c("UST", "IFX", "ADA"))
 
+  # B1 fix (docs/model_audit_v6.md A17): Table 3's Moderate-Severe row is a per-2-week-cycle
+  # transition probability, applied INDUCTION_CYCLES[[therapy]] times, not read directly as a
+  # 1-cycle terminal split -- the raw published row entries (0.791/0.133 for UST) are no longer
+  # what this function returns.
   ust <- out[out$therapy == "UST", ]
-  expect_equal(ust$to_moderate_severe, 0.791)
-  expect_equal(ust$to_remission, 0.133)
+  expect_equal(ust$induction_cycles, 3)
+  expect_false(isTRUE(all.equal(ust$to_moderate_severe, 0.791)))
+  expect_false(isTRUE(all.equal(ust$to_remission, 0.133)))
+
+  ifx <- out[out$therapy == "IFX", ]
+  expect_equal(ifx$induction_cycles, 2)
 
   # ADA and IFX are published as numerically identical (IFX:ADA efficacy ratio = 1.00 base case),
-  # confirmed against the appendix table image -- not a transcription error.
+  # confirmed against the appendix table image -- not a transcription error. Still true of the
+  # corrected multi-cycle terminal split, since both share the same raw Table 3 row and cycle count.
   ada <- out[out$therapy == "ADA", ]
-  ifx <- out[out$therapy == "IFX", ]
+  expect_equal(ada$induction_cycles, ifx$induction_cycles)
   expect_equal(ada$to_remission, ifx$to_remission)
 
-  # Published values are rounded to 3-4 significant figures, so rows sum to ~1, not exactly 1.
+  # Published values are rounded to 3-4 significant figures, so a single 2-week-cycle row sums to
+  # ~1, not exactly 1 -- but repeated multiplication through a row-normalised matrix
+  # (build_transition_matrix()) conserves cohort mass exactly, so the corrected terminal split
+  # sums to 1 far more tightly than the raw table's own rounding tolerance.
   totals <- out$to_moderate_severe + out$to_moderate_severe_responder + out$to_mild + out$to_remission
-  expect_true(all(abs(totals - 1) < 0.001))
+  expect_equal(totals, rep(1, nrow(out)), tolerance = 1e-9)
+})
+
+test_that("load_published_induction's terminal split independently reproduces the closed-form repeated-multiplication result", {
+  # Re-derives the expected terminal split from Table 3's own raw (un-normalised) Moderate-Severe
+  # row using nothing but base-R vector arithmetic -- deliberately NOT calling
+  # build_transition_matrix()/simulate_cohort() (the functions under test) -- so this is a real
+  # independent check, not a tautology. Absorbing self-loops on Mild/M-SR/Remission mean the
+  # closed form is exactly geometric: after n cycles, mass remaining in Moderate-Severe is a^n
+  # (a = the row-normalised Moderate-Severe self-loop), and mass having flowed into state X is
+  # x * (a^(n-1) + ... + a + 1), x = X's own row-normalised one-cycle transition probability.
+  closed_form_terminal <- function(raw_row, n_cycles) {
+    total <- sum(raw_row)
+    a <- raw_row[["Moderate-Severe"]] / total
+    geometric_sum <- sum(a^seq(0, n_cycles - 1))
+    c(
+      "Moderate-Severe" = a^n_cycles,
+      "Moderate-Severe Responder" = (raw_row[["Moderate-Severe Responder"]] / total) * geometric_sum,
+      "Mild" = (raw_row[["Mild"]] / total) * geometric_sum,
+      "Remission" = (raw_row[["Remission"]] / total) * geometric_sum
+    )
+  }
+
+  out <- load_published_induction(repo_root_relative("data", "raw"))
+  raw_rows <- list(
+    UST = c("Moderate-Severe" = 0.791, "Moderate-Severe Responder" = 0.0377, "Mild" = 0.0377, "Remission" = 0.133),
+    IFX = c("Moderate-Severe" = 0.756, "Moderate-Severe Responder" = 0.0208, "Mild" = 0.0208, "Remission" = 0.203),
+    ADA = c("Moderate-Severe" = 0.756, "Moderate-Severe Responder" = 0.0208, "Mild" = 0.0208, "Remission" = 0.203)
+  )
+
+  for (tx in names(raw_rows)) {
+    row <- out[out$therapy == tx, ]
+    expected <- closed_form_terminal(raw_rows[[tx]], row$induction_cycles)
+    expect_equal(row$to_moderate_severe, unname(expected[["Moderate-Severe"]]), tolerance = 1e-9, info = tx)
+    expect_equal(row$to_moderate_severe_responder, unname(expected[["Moderate-Severe Responder"]]), tolerance = 1e-9, info = tx)
+    expect_equal(row$to_mild, unname(expected[["Mild"]]), tolerance = 1e-9, info = tx)
+    expect_equal(row$to_remission, unname(expected[["Remission"]]), tolerance = 1e-9, info = tx)
+  }
 })
 
 test_that("load_published_maintenance reproduces Table 4 unmodified at its native 2-week cycle", {
