@@ -584,20 +584,27 @@ half**, so both are closed here:
   convergence, since a converged subset A says nothing about whether a much smaller subset B is a
   real number, and Aim 3 rests on B being real.
 
-**What moves, and by how much** (300-draw lifetime-horizon verification run, not the authoritative
-10,000-draw one — Eric runs that separately; these are the direction and rough magnitude to
-expect): required durable cure fraction π\* at Treg's sourced acquisition price rises from
-**27.5% / 20.5% / 16.8%** to **72.4% / 54.3% / 44.6%** at WTP $50k / $100k / $150k — still feasible
-at all three thresholds, but a materially harder target than this morning's figures. Deterministic
-EJP at π = 1, WTP $150k falls from $99,995 to $40,077; probabilistic EJP median at $150k falls from
-$49,631 to ≈$24,100, still comfortably above the $19,917 sourced price. EVPPI at WTP $150k: subset
-A (π) $2,563, **subset B (h) $947**, **durability block A∪B $3,277 = 93% of total EVPI**, against
-cost block C (Treg price) $365 = 10%. **The durability block carries roughly an order of magnitude
-more EVPPI than the cost block, and h alone still outranks price** — that is Aim 3's falsifiable
-question, answered, where before it could not be posed. (The A∪B∪C∪E row scores *below* its own
-subsets; that is the PCA-dilution artifact already documented on `evppi_by_subset()` — 8 raw
-parameters compressed into 2 components — not a new finding. A∪B is 2 raw dimensions and is left
-unreduced, which is why it is the trustworthy row to lead with.)
+**What moves, and by how much — confirmed by the authoritative 10,000-draw lifetime-horizon run
+(2026-08-06, `analysis/run_full_analysis.R`, ~67 min wall clock, exit 0, no warnings), superseding
+the 300-draw verification figures this entry originally carried:** required durable cure fraction
+π\* at Treg's sourced acquisition price rises from **27.5% / 20.5% / 16.8%** to **72.4% / 54.3% /
+44.6%** at WTP $50k / $100k / $150k — still feasible at all three thresholds, but a materially
+harder target than the pre-B3 figures (this deterministic figure is unchanged from the 300-draw
+verification run, as expected — it doesn't depend on PSA sample size). Probabilistic EJP median
+falls from **$49,631 to $21,057.63** at WTP $150k (from $40,357 to $18,199.85 at $100k; from
+$30,913 to $15,308.02 at $50k) — **only ~$1,140 above the $19,917 sourced price at the primary WTP,
+a much thinner margin than the pre-B3 figure implied**, though still positive (gross margin over
+COGS at the median ≈76%, down from ≈90%). EVPPI at WTP $150k, full 10,000 draws: subset A (π)
+$3,033 (72.7% of total EVPI $4,172), **subset B (h) $1,790 (42.9%)**, **durability block A∪B
+$3,818 = 91.5% of total EVPI**, against cost block C (Treg price) $492 (11.8%) and utilities E $51
+(1.2%). **The durability block carries roughly 4× the EVPPI of the cost block, and h alone
+outranks C** — Aim 3's falsifiable question, answered with the full authoritative sample, where
+before it could not even be posed. π-prior-sensitivity (`evppi_prior_sensitivity.csv`) confirms
+A∪B ranks #1 under all three priors (reference, Beta(1,3), Beta(2,2)) — the ranking finding is
+prior-robust, as the memo's own framing anticipated; only the level moves with the prior. (The
+A∪B∪C∪E row scores *below* its own subsets; that is the PCA-dilution artifact already documented
+on `evppi_by_subset()` — 8 raw parameters compressed into 2 components — not a new finding. A∪B is
+2 raw dimensions and is left unreduced, which is why it is the trustworthy row to lead with.)
 
 **What does not move.** `base_case_results.csv`, `base_case_results_by_horizon.csv`,
 `refractory_scenario_results.csv` and the S12 table are **bit-identical**, because they report Treg
