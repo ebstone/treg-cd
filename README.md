@@ -489,8 +489,37 @@ from before it.**
   floating-point precision, the full test suite passed (after recalibrating two pre-existing
   numeric-threshold tests in `test-deterministic-results.R` whose hardcoded price constants were
   tuned to pre-B1-fix numbers — not a logic bug), and `analysis/run_full_analysis.R` was then run
-  end to end for real. `output/tables/` now reflects that live run; see the dated entry below for
-  runtime and result notes.
+  end to end for real. `output/tables/` now reflects that live run; see the dated entry
+  immediately below for runtime and headline numbers.
+
+**`analysis/run_full_analysis.R` run end to end post-B1-fix (2026-08-06), all 10 steps, exit
+code 0, no warnings.** Wall clock ≈75 min, almost entirely the 10,000-draw lifetime-horizon PSA
+(step 3/10) — the comparator-hoist optimization above is what makes that tractable at all; without
+it this would be ~3 full lifetime Markov simulations × 10,000 draws instead of 3 total.
+`verify_pi_factorization()`'s exact-linearity check (`pi_factorization_check.csv`) still holds to
+floating-point precision post-fix (max relative error 3.97e-13) — the same finding as before B1,
+now confirmed on the corrected induction split too. Headline numbers, all superseding the
+pre-B1-fix figures quoted earlier in this section:
+- **Required durable cure fraction π\* at Treg's sourced acquisition price ($19,916.75), lifetime
+  horizon:** 27.5% / 20.5% / 16.8% at WTP $50k / $100k / $150k (`headroom_at_sourced_price.csv`)
+  — all feasible, and substantially *easier* to hit than the pre-B1-fix figures (76.3% / 56.3% /
+  45.7%, `treg-cd-project` memory / earlier drafts of this section). This is the correct-and-
+  expected direction, not a red flag: the B1 fix raises comparator maintenance drug cost (bigger
+  responder pools enter the paid maintenance track) by more than it raises comparator QALYs, so
+  comparators become materially more expensive relative to Treg — Treg needs to cure a smaller
+  share of patients to look cost-effective against them, not a larger one.
+- **Probabilistic EJP (median, at WTP $150k):** $49,631 — well above the $19,917 sourced price
+  (gross margin over COGS ≈90% at that price). At WTP $50k/$100k: $30,913 / $40,357
+  (`ejp_probabilistic.csv`).
+- **EVPPI by subset at WTP $150k** (`evppi_by_subset.csv`): subset A (π) dominates at
+  $1,359/patient (89% of total EVPI); subsets C (Treg price) and E (utilities) are ≈0, consistent
+  with earlier pre-B1-fix findings that price/utility uncertainty contribute essentially nothing
+  once π is known. Aim 3's durability-vs-cost-block comparison (subset B, relapse hazard) is
+  still not answerable — B3 (sample h in the PSA) remains open, out of scope for this pass by
+  Eric's own direction.
+- 18 tables written to `output/tables/` (15 primary lifetime-horizon outputs + 3 comparability-
+  scenario outputs — S5 horizon, S3 refractory). Full list printed at the end of the script's own
+  log output.
 
 ## Repository structure
 
