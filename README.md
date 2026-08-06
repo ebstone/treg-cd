@@ -475,15 +475,22 @@ from before it.**
   frontier, PSA, EVPI/EVPPI, EJP) runs at `HORIZON_CYCLES_LIFETIME` first and is written to the
   unsuffixed table names; the 6.15-year and 10-year horizons are retained, explicitly labelled,
   as the S5 comparability scenarios `analysis_plan.md` §10.3 already calls them, written to
-  `_6yr_comparability` / `_10yr_comparability`-suffixed tables. `R/06_psa.R`'s comparator-arm
-  Markov simulation is hoisted out of the per-draw loop (`simulate_comparator_arm_lifetime()`,
-  R/05) — transition probabilities aren't PSA-sampled in this pass, so each comparator's
-  occupancy trace is identical across all 10,000 draws and only needs computing once — which is
-  most of what makes a lifetime-horizon PSA (1,691 cycles vs. 160) tractable at all. No R
-  toolchain is available in the environment this change was made in, so `output/tables/` has not
-  actually been regenerated from a live run; the next session with R available should run
-  `analysis/run_full_analysis.R` end to end and commit (or hash-manifest, R6) the results before
-  anything from this section is cited.
+  `base_case_results_by_horizon.csv` / `headroom_frontier_by_horizon.csv` (each with an explicit
+  `horizon` column distinguishing 6.15yr/10yr/lifetime — not separate per-horizon files).
+  `R/06_psa.R`'s comparator-arm Markov simulation is hoisted out of the per-draw loop
+  (`simulate_comparator_arm_lifetime()`, R/05) — transition probabilities aren't PSA-sampled in
+  this pass, so each comparator's occupancy trace is identical across all 10,000 draws and only
+  needs computing once — which is most of what makes a lifetime-horizon PSA (1,691 cycles vs.
+  160) tractable at all.
+  **2026-08-06 update, same day:** the above was originally written and merged from a session
+  with no R toolchain available, which hand-regenerated `data/processed/`'s derived induction CSV
+  and could not run the test suite or pipeline. A follow-up session with R verified it directly:
+  the hand-computed values matched a live `R/00_derive_transition_probs.R` run to full
+  floating-point precision, the full test suite passed (after recalibrating two pre-existing
+  numeric-threshold tests in `test-deterministic-results.R` whose hardcoded price constants were
+  tuned to pre-B1-fix numbers — not a logic bug), and `analysis/run_full_analysis.R` was then run
+  end to end for real. `output/tables/` now reflects that live run; see the dated entry below for
+  runtime and result notes.
 
 ## Repository structure
 

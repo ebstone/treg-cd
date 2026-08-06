@@ -124,7 +124,15 @@ test_that("headroom_pi_star's root, where one exists, actually satisfies the NMB
 })
 
 test_that("headroom_frontier returns a monotone-non-decreasing pi_star as price rises, over a grid with a real feasible/infeasible boundary", {
-  price_grid <- c(1000, 5000, 10000, 15000, 20000)
+  # price_grid recalibrated 2026-08-06 (B1 fix, docs/model_audit_v6.md A17): the corrected,
+  # larger comparator responder pools push comparator maintenance drug cost up enough that the
+  # feasible/infeasible boundary at the 6.15-year horizon (this test's default n_cycles) moved
+  # from inside [1000, 20000] to inside (20000, 30000] -- more headroom for Treg at a given price,
+  # not less, since a bigger comparator responder pool raises comparator drug spend more than it
+  # raises comparator QALYs. 20000 is still feasible, 30000 is not (verified directly against
+  # headroom_frontier() post-fix); this grid just needs to keep bracketing a real boundary, the
+  # same intent as the original grid, not a specific price level.
+  price_grid <- c(1000, 5000, 10000, 20000, 30000)
   f <- headroom_frontier(price_grid, wtp_usd = 150000, raw_dir = RAW_DIR, proc_dir = PROC_DIR)
 
   expect_equal(nrow(f), length(price_grid))
@@ -225,12 +233,15 @@ test_that("headroom_pi_star's qaly_gain is 0 exactly at pi_star = 0, NA when inf
 })
 
 test_that("a shorter median SDR duration T (higher relapse hazard) requires a higher pi* for the same price -- the h-sweep sanity check", {
-  # price = 3000, not 7000: at the 6.15-year horizon a pessimistic T = 2 relapse duration already
-  # pushes 7000 out of the feasible region entirely (correctly -- a price this horizon can barely
-  # justify even with a durable cure has no headroom left once relapse erodes that durability
-  # too), which would make this an infeasible-vs-infeasible comparison rather than the interior
-  # comparison this test is about. 3000 keeps both durations in the interior-root regime.
-  price <- 3000
+  # price = 5000, not 3000/7000 (recalibrated 2026-08-06, B1 fix, docs/model_audit_v6.md A17): the
+  # corrected, larger comparator responder pools raised comparator maintenance drug cost enough
+  # that 3000 is now cheap enough to be feasible at pi_star = 0 under EITHER duration (a boundary
+  # case, not the interior comparison this test needs), while at the 6.15-year horizon a
+  # pessimistic T = 2 relapse duration pushes 7000 out of the feasible region entirely (the same
+  # failure mode the original comment already knew to avoid, just at a different price now).
+  # 5000 keeps both durations in the interior-root regime post-fix (verified directly against
+  # headroom_pi_star()).
+  price <- 5000
   optimistic <- headroom_pi_star(price, wtp_usd = 150000, relapse_hazard_annual = duration_to_hazard(20),
                                   raw_dir = RAW_DIR, proc_dir = PROC_DIR)
   pessimistic <- headroom_pi_star(price, wtp_usd = 150000, relapse_hazard_annual = duration_to_hazard(2),
