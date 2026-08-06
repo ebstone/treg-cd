@@ -675,6 +675,30 @@ fixed in code comments themselves, not just docs: `R/04_costs_utilities.R`'s and
 own 2026-08-04 comments on the 2-dose scenario read the same stale way. All corrected in place
 with dated notes, following this project's own convention, rather than silently rewritten.
 
+**Four items deliberately deferred, 2026-08-06 — Eric's own explicit decision, kept here as a
+standing next-steps list, not implemented without a clear go-ahead.** All four were raised by the
+same 2026-08-05 external peer review that found B1/B2/B3/R1/R2 above; none of them are defects in
+what has already been built, and none are required for the study as currently scoped — they are
+possible future improvements. Full detail and recommended next steps for each are in
+`docs/analysis_plan.md` §13's limitations table (search that section for the 2026-08-06 rows), not
+duplicated here; one-line summary of each, ranked by how much attention they'd warrant before an
+eventual submission, not by discovery order:
+- **M5 — no adverse-event module for an allogeneic cell therapy.** The one item of the four this
+  project's own §13 already predicted reviewers will ask about directly; compounded by
+  cyclophosphamide preconditioning dose also being unpriced. Recommend prioritising before
+  submission, not treating as optional.
+- **M7 — UST's maintenance price is a derived proxy and is not PSA-sampled**, despite the peer
+  review finding it carries outsized leverage on the EJP (the paper's headline Aim 1 output).
+  The price's *derivation* is disclosed; the fact that it's held fixed despite that leverage was
+  not, until this entry.
+- **M3 — the 2-year maintenance cap may not be plausible at either extreme over a 65-year
+  horizon.** Already partly mitigated: S1 reports cap-on/cap-off side by side, so the sensitivity
+  is quantified, not hidden — the gap is narrative caveating, not missing data.
+- **M6 — no CD-specific excess mortality**, only US general-population background. Lowest-risk of
+  the four to leave as-is: it's a precedented convention (matches NICE TA456), and directionally
+  understates Treg's relative advantage rather than inflating it, so it's a comfortable one to
+  defend unchanged if ever challenged.
+
 ## Repository structure
 
 - `data/raw/` — verbatim source extracts (Aliyev et al. 2019, ten Ham et al. 2020, CMS, HCUP,
