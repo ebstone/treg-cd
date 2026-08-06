@@ -597,7 +597,7 @@ a much thinner margin than the pre-B3 figure implied**, though still positive (g
 COGS at the median ≈76%, down from ≈90%). EVPPI at WTP $150k, full 10,000 draws: subset A (π)
 $3,033 (72.7% of total EVPI $4,172), **subset B (h) $1,790 (42.9%)**, **durability block A∪B
 $3,818 = 91.5% of total EVPI**, against cost block C (Treg price) $492 (11.8%) and utilities E $51
-(1.2%). **The durability block carries roughly 4× the EVPPI of the cost block, and h alone
+(1.2%). **The durability block carries roughly 7.8× the EVPPI of the cost block, and h alone
 outranks C** — Aim 3's falsifiable question, answered with the full authoritative sample, where
 before it could not even be posed. π-prior-sensitivity (`evppi_prior_sensitivity.csv`) confirms
 A∪B ranks #1 under all three priors (reference, Beta(1,3), Beta(2,2)) — the ranking finding is
